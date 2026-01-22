@@ -317,7 +317,8 @@ configure_container() {
     fi
     
     echo ""
-    read -p "Enable SSH access? (y/N): " enable_ssh
+    read -p "Enable SSH access? (Y/n): " enable_ssh
+    enable_ssh=${enable_ssh:-Y}
     if [[ "$enable_ssh" =~ ^[Yy]$ ]]; then
         ENABLE_SSH="yes"
         read -p "Enter SSH username (default: frigate): " input_user
@@ -348,7 +349,8 @@ configure_container() {
     fi
     
     echo ""
-    read -p "Enable Samba file sharing? (y/N): " enable_samba
+    read -p "Enable Samba file sharing? (Y/n): " enable_samba
+    enable_samba=${enable_samba:-Y}
     if [[ "$enable_samba" =~ ^[Yy]$ ]]; then
         ENABLE_SAMBA="yes"
         
@@ -421,7 +423,8 @@ show_configuration_summary() {
         echo ""
     fi
     
-    read -p "Proceed with installation? (y/N): " confirm
+    read -p "Proceed with installation? (Y/n): " confirm
+    confirm=${confirm:-Y}
     if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
         log "Installation cancelled by user"
         exit 0
