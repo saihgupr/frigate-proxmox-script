@@ -32,13 +32,13 @@ Optimized for the **Beelink S12** (Intel N95/N100), but compatible with any Inte
 ### Option 1: One-Command Install (Recommended)
 
 ```bash
-bash <(curl -s https://raw.githubusercontent.com/saihgupr/frigate-script/main/install.sh)
+bash <(curl -s https://raw.githubusercontent.com/saihgupr/frigate-proxmox-script/main/install.sh)
 ```
 
 ### Option 2: Download and Run
 
 ```bash
-wget https://raw.githubusercontent.com/saihgupr/frigate-script/main/install.sh
+wget https://raw.githubusercontent.com/saihgupr/frigate-proxmox-script/main/install.sh
 bash install.sh
 ```
 
