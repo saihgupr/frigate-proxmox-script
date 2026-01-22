@@ -49,6 +49,13 @@ ENABLE_SSH="no"
 SSH_USER="frigate"
 SSH_PASSWORD=""
 ENABLE_SAMBA="no"
+IS_REOLINK="no"
+
+# Hardware Detection Result Strings
+DETECTED_CPU=""
+DETECTED_GPU="none"
+DETECTED_CORAL="none"
+GPU_PRESET="preset-vaapi" # Default to VAAPI (Intel/AMD)
 
 # ============================================================================
 # HELPER FUNCTIONS
@@ -158,13 +165,47 @@ check_resources() {
 }
 
 check_hardware() {
-    log_step "Checking for Intel iGPU..."
+    log_step "Detecting hardware..."
     
-    if [ ! -e "/dev/dri/renderD128" ]; then
-        log_warn "Intel iGPU not detected (/dev/dri/renderD128 not found)"
-        log_warn "Hardware acceleration may not work properly"
+    # CPU Detection
+    if command -v lscpu &>/dev/null; then
+        DETECTED_CPU=$(lscpu | grep "Model name" | cut -d: -f2 | xargs)
     else
-        log_success "Intel iGPU detected at /dev/dri/renderD128"
+        DETECTED_CPU=$(grep -m1 "model name" /proc/cpuinfo | cut -d: -f2 | xargs)
+    fi
+    log "CPU: $DETECTED_CPU"
+
+    # GPU Detection
+    if [ -e "/dev/dri/renderD128" ]; then
+        if lspci 2>/dev/null | grep -qi "intel"; then
+            DETECTED_GPU="Intel iGPU"
+            GPU_PRESET="preset-vaapi"
+        elif lspci 2>/dev/null | grep -qi "amd"; then
+            DETECTED_GPU="AMD GPU"
+            GPU_PRESET="preset-vaapi"
+        else
+            DETECTED_GPU="Generic VAAPI (Intel/AMD)"
+            GPU_PRESET="preset-vaapi"
+        fi
+    elif command -v nvidia-smi &>/dev/null; then
+        DETECTED_GPU="NVIDIA GPU"
+        GPU_PRESET="preset-nvidia"
+    fi
+    
+    if [ "$DETECTED_GPU" != "none" ]; then
+        log_success "Detected GPU: $DETECTED_GPU"
+    else
+        log_warn "No integrated or dedicated GPU detected for hardware acceleration."
+        GPU_PRESET="none"
+    fi
+
+    # Coral Detection
+    if lsusb 2>/dev/null | grep -qi "Google Inc. Digital Enlightenment"; then
+        DETECTED_CORAL="USB"
+        log_success "Detected Google Coral (USB)"
+    elif lspci 2>/dev/null | grep -qi "Global Unichip Corp"; then
+        DETECTED_CORAL="PCIe"
+        log_success "Detected Google Coral (PCIe)"
     fi
 }
 
@@ -229,11 +270,16 @@ configure_container() {
     fi
     
     echo ""
-    read -p "Enable Intel iGPU hardware acceleration? (Y/n): " enable_igpu
-    if [[ "$enable_igpu" =~ ^[Nn]$ ]]; then
-        ENABLE_IGPU="no"
+    if [ "$DETECTED_GPU" != "none" ]; then
+        read -p "Enable hardware acceleration using $DETECTED_GPU? (Y/n): " enable_hwaccel
+        if [[ "$enable_hwaccel" =~ ^[Nn]$ ]]; then
+            ENABLE_IGPU="no"
+        else
+            ENABLE_IGPU="yes"
+        fi
     else
-        ENABLE_IGPU="yes"
+        log_warn "Hardware acceleration will be disabled (no compatible GPU detected)."
+        ENABLE_IGPU="no"
     fi
     
     echo ""
@@ -258,6 +304,12 @@ configure_container() {
            FRIGATE_VERSION="$custom_tag" ;;
         *) FRIGATE_VERSION="stable" ;;
     esac
+    
+    echo ""
+    read -p "Do you have Reolink cameras? (y/N): " is_reolink
+    if [[ "$is_reolink" =~ ^[Yy]$ ]]; then
+        IS_REOLINK="yes"
+    fi
     
     echo ""
     read -p "Enable SSH access? (y/N): " enable_ssh
@@ -346,7 +398,8 @@ show_configuration_summary() {
     echo ""
     echo "Frigate Settings:"
     echo "  Docker Image:    ghcr.io/blakeblackshear/frigate:$FRIGATE_VERSION"
-    echo "  Intel iGPU:      $ENABLE_IGPU"
+    echo "  HW Accel:        $ENABLE_IGPU ($DETECTED_GPU)"
+    echo "  Reolink Support: $IS_REOLINK"
     echo "  Web Port:        $FRIGATE_PORT"
     if [ "$ENABLE_SSH" = "yes" ]; then
         echo "  SSH User:        $SSH_USER"
@@ -513,8 +566,29 @@ create_docker_compose() {
     
     local device_config=""
     if [ "$ENABLE_IGPU" = "yes" ]; then
-        device_config="    devices:
+        if [ "$DETECTED_GPU" = "NVIDIA GPU" ]; then
+            device_config="    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu, video]"
+        else
+            device_config="    devices:
       - /dev/dri/renderD128:/dev/dri/renderD128"
+        fi
+    fi
+
+    # Add Coral PCIe if detected
+    if [ "$DETECTED_CORAL" = "PCIe" ]; then
+        if [ -n "$device_config" ]; then
+            device_config="$device_config
+      - /dev/apex_0:/dev/apex_0"
+        else
+            device_config="    devices:
+      - /dev/apex_0:/dev/apex_0"
+        fi
     fi
     
     if [ "$DRY_RUN" = false ]; then
@@ -554,26 +628,74 @@ create_frigate_config() {
     log_step "Creating initial Frigate configuration..."
     
     local hwaccel_config=""
-    if [ "$ENABLE_IGPU" = "yes" ]; then
-        hwaccel_config="  hwaccel_args: preset-vaapi"
+    if [ "$ENABLE_IGPU" = "yes" ] && [ "$GPU_PRESET" != "none" ]; then
+        hwaccel_config="  hwaccel_args: $GPU_PRESET"
     fi
-    
-    if [ "$DRY_RUN" = false ]; then
-        pct exec "$CT_ID" -- bash -c "cat > /opt/frigate/config/config.yml" << EOF
-mqtt:
-  enabled: false
 
-ffmpeg:
-$hwaccel_config
+    local go2rtc_config=""
+    if [ "$IS_REOLINK" = "yes" ]; then
+        go2rtc_config="go2rtc:
+  streams:
+    reolink_camera: # Example Reolink stream
+      - ffmpeg:http://camera-ip/flv?user=admin&password=yourpassword&channel=0&stream=0"
+    fi
 
-cameras:
-  dummy_camera:
+    local camera_template=""
+    if [ "$IS_REOLINK" = "yes" ]; then
+        camera_template="  reolink_camera:
+    enabled: false
+    ffmpeg:
+      inputs:
+        - path: rtsp://admin:password@camera-ip:554/h264Preview_01_main
+          roles:
+            - detect
+            - record"
+    else
+        camera_template="  dummy_camera:
     enabled: false
     ffmpeg:
       inputs:
         - path: rtsp://user:password@camera-ip:554/stream
           roles:
-            - detect
+            - detect"
+    fi
+
+    local detector_config="detectors:
+  ov:
+    type: openvino
+    device: CPU"
+    
+    if [ "$DETECTED_CORAL" = "USB" ]; then
+        detector_config="detectors:
+  coral:
+    type: edgetpu
+    device: usb"
+    elif [ "$DETECTED_CORAL" = "PCIe" ]; then
+        detector_config="detectors:
+  coral:
+    type: edgetpu
+    device: pci"
+    elif [[ "$DETECTED_GPU" == *"Intel"* ]]; then
+        detector_config="detectors:
+  ov:
+    type: openvino
+    device: GPU"
+    fi
+
+    if [ "$DRY_RUN" = false ]; then
+        pct exec "$CT_ID" -- bash -c "cat > /opt/frigate/config/config.yml" << EOF
+mqtt:
+  enabled: false
+
+$go2rtc_config
+
+ffmpeg:
+$hwaccel_config
+
+$detector_config
+
+cameras:
+$camera_template
 EOF
         log_success "Initial config.yml created"
     else

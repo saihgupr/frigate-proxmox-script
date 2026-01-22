@@ -15,7 +15,9 @@ Optimized for the **Beelink S12** (Intel N95/N100), but compatible with any Inte
 ✅ **Fully Automated** - One-command installation in ~10 minutes  
 ✅ **Safe by Design** - Dry-run mode, pre-flight checks, and rollback capabilities  
 ✅ **Version Selection** - Choose stable, beta, or custom version tags  
-✅ **Intel iGPU Support** - Hardware acceleration via VAAPI  
+✅ **Intel, NVIDIA, & AMD Support** - Hardware acceleration via VAAPI or NVIDIA NVDEC  
+✅ **Hardware Auto-Detection** - Automatically identifies CPU, GPU, and Coral TPU  
+✅ **Reolink Optimized** - Built-in templates for popular Reolink cameras  
 ✅ **Easy Updates** - Simple Docker image updates  
 ✅ **Home Assistant Ready** - Port 5000 default for easy integration  
 ✅ **Optional SSH & Samba** - Configurable remote access and file sharing  
@@ -154,13 +156,24 @@ nano /mnt/frigate/config.yml
 └── storage/               # Recordings and snapshots
 ```
 
+### Reolink Cameras
+
+If you have Reolink cameras, the script offers an optimized configuration. Reolink cameras often work best with the HTTP-FLV stream for stability.
+
+The script will add a `go2rtc` section and a camera template using the recommended paths:
+- **Main Stream**: `rtsp://admin:password@camera-ip:554/h264Preview_01_main`
+- **Sub Stream (FLV)**: `http://camera-ip/flv?user=admin&password=yourpassword&channel=0&stream=0`
+
 ## Hardware Acceleration
 
-For **Beelink S12** (Intel N95/N100), hardware acceleration is automatically configured:
+The script automatically detects your hardware and configures the optimal `hwaccel_args`:
 
-- **Device**: `/dev/dri/renderD128` (passed through to container)
-- **Driver**: VAAPI (Video Acceleration API)
-- **ffmpeg preset**: `preset-vaapi`
+- **Intel iGPU/AMD**: Uses `preset-vaapi`
+- **NVIDIA GPU**: Uses `preset-nvidia`
+- **Detectors**: 
+  - **Google Coral (USB/PCIe)**: Automatically configured if detected.
+  - **Intel iGPU**: Uses OpenVINO GPU if no Coral is found.
+  - **CPU**: Default fallback for other hardware.
 
 ### Verify Hardware Acceleration
 
