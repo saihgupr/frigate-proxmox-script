@@ -11,23 +11,21 @@ Optimized for the **Beelink S12** (Intel N95/N100), but compatible with any Inte
 
 ## Features
 
-✅ **Docker-Based** - Fast, reliable installation using official Frigate Docker images  
-✅ **Fully Automated** - One-command installation in ~10 minutes  
-✅ **Safe by Design** - Dry-run mode, pre-flight checks, and rollback capabilities  
-✅ **Version Selection** - Choose stable, beta, or custom version tags  
-✅ **Intel, NVIDIA, & AMD Support** - Hardware acceleration via VAAPI or NVIDIA NVDEC  
+✅ **Docker-Based** - Official Frigate images for reliability and speed  
+✅ **Zero-Config Setup** - Smart hardware detection avoids manual indexing  
+✅ **Intel, NVIDIA, & AMD** - Broad hardware acceleration support via VAAPI/NVDEC  
 ✅ **Hardware Auto-Detection** - Automatically identifies CPU, GPU, and Coral TPU  
-✅ **Reolink Optimized** - Built-in templates for popular Reolink cameras  
-✅ **Easy Updates** - Simple Docker image updates  
-✅ **Home Assistant Ready** - Port 5000 default for easy integration  
-✅ **Optional SSH & Samba** - Configurable remote access and file sharing  
+✅ **Reolink Optimized** - Built-in templates for the notoriously tricky Reolink cameras  
+✅ **Easy Updates** - Simple Docker pulls to keep your NVR current  
+✅ **Home Assistant Ready** - Default ports and paths pre-configured  
+✅ **Add-ons Included** - Optional SSH & Samba for easy file management  
 
 ## Requirements
 
 - **Proxmox VE** 7.0 or later
 - **Root access** on Proxmox host
-- **Internet connection** for downloading packages
-- **Intel iGPU** (recommended for hardware acceleration)
+- **Intel iGPU, NVIDIA GPU, or AMD GPU** (recommended for low CPU usage)
+- **Google Coral TPU** (optional, but recommended for best detection performance)
 
 ## Quick Start
 
@@ -166,14 +164,18 @@ The script will add a `go2rtc` section and a camera template using the recommend
 
 ## Hardware Acceleration
 
-The script automatically detects your hardware and configures the optimal `hwaccel_args`:
+## How Smart Detection Works
 
-- **Intel iGPU/AMD**: Uses `preset-vaapi`
-- **NVIDIA GPU**: Uses `preset-nvidia`
-- **Detectors**: 
-  - **Google Coral (USB/PCIe)**: Automatically configured if detected.
-  - **Intel iGPU**: Uses OpenVINO GPU if no Coral is found.
-  - **CPU**: Default fallback for other hardware.
+The script performs a "pre-flight" scan of your Proxmox host to determine the best possible configuration for your specific hardware:
+
+1.  **CPU Identification**: Detects your processor model to optimize OpenVINO performance.
+2.  **GPU Passthrough**: 
+    - **Intel/AMD**: Automatically detects `/dev/dri/` and configures VAAPI.
+    - **NVIDIA**: Detects the presence of NVIDIA drivers and configures the NVIDIA Container Runtime in LXC.
+3.  **Detector Optimization**:
+    - If a **Google Coral (USB or PCIe)** is found, it's set as the primary detector.
+    - If no Coral is found, it utilizes **OpenVINO** (favoring the iGPU if available, otherwise falling back to CPU).
+4.  **Reolink Stability**: If you select Reolink support, it pre-configures **Go2RTC** using the HTTP-FLV stream, which bypasses common RTSP timeout issues found on many Reolink models.
 
 ### Verify Hardware Acceleration
 
