@@ -11,7 +11,7 @@ set -euo pipefail
 # GLOBAL VARIABLES
 # ============================================================================
 
-VERSION="2.0.0"
+VERSION="2.0.1"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_FILE="/tmp/frigate-install-$(date +%Y%m%d-%H%M%S).log"
 DRY_RUN=false
@@ -50,6 +50,7 @@ SSH_USER="frigate"
 SSH_PASSWORD=""
 ENABLE_SAMBA="no"
 IS_REOLINK="no"
+ROOT_PASSWORD=""
 
 # Hardware Detection Result Strings
 DETECTED_CPU=""
@@ -317,6 +318,31 @@ configure_container() {
     fi
     
     echo ""
+    log_step "Security Configuration"
+    
+    # Root Password (Always required for console access)
+    while true; do
+        echo "Set the root password for the container (required for console access):"
+        read -sp "Root Password: " ROOT_PASSWORD
+        echo ""
+        
+        if [ -z "$ROOT_PASSWORD" ]; then
+            log_error "Password cannot be empty!"
+            continue
+        fi
+        
+        read -sp "Confirm Root Password: " root_pass_confirm
+        echo ""
+        
+        if [ "$ROOT_PASSWORD" = "$root_pass_confirm" ]; then
+            break
+        else
+            log_error "Passwords do not match! Please try again."
+            echo ""
+        fi
+    done
+
+    echo ""
     read -p "Enable SSH access? (Y/n): " enable_ssh
     enable_ssh=${enable_ssh:-Y}
     if [[ "$enable_ssh" =~ ^[Yy]$ ]]; then
@@ -325,27 +351,32 @@ configure_container() {
         SSH_USER="${input_user:-frigate}"
         echo ""
         
-        # Password confirmation loop
-        while true; do
-            echo "Enter SSH password (input will be hidden):"
-            read -sp "Password: " SSH_PASSWORD
-            echo ""
-            
-            if [ -z "$SSH_PASSWORD" ]; then
-                log_error "Password cannot be empty!"
-                continue
-            fi
-            
-            read -sp "Confirm password: " SSH_PASSWORD_CONFIRM
-            echo ""
-            
-            if [ "$SSH_PASSWORD" = "$SSH_PASSWORD_CONFIRM" ]; then
-                break
-            else
-                log_error "Passwords do not match! Please try again."
+        if [ "$SSH_USER" = "root" ]; then
+            SSH_PASSWORD="$ROOT_PASSWORD"
+            log "Using configured root password for SSH access."
+        else
+            # Password confirmation loop for non-root user
+            while true; do
+                echo "Enter password for user '$SSH_USER':"
+                read -sp "Password: " SSH_PASSWORD
                 echo ""
-            fi
-        done
+                
+                if [ -z "$SSH_PASSWORD" ]; then
+                    log_error "Password cannot be empty!"
+                    continue
+                fi
+                
+                read -sp "Confirm password: " SSH_PASSWORD_CONFIRM
+                echo ""
+                
+                if [ "$SSH_PASSWORD" = "$SSH_PASSWORD_CONFIRM" ]; then
+                    break
+                else
+                    log_error "Passwords do not match! Please try again."
+                    echo ""
+                fi
+            done
+        fi
     fi
     
     echo ""
@@ -851,6 +882,17 @@ EOF
     log_success "Samba configured with shares: Frigate, Config, Media"
 }
 
+setup_root_password() {
+    log_step "Setting up root password..."
+    
+    if [ -n "$ROOT_PASSWORD" ]; then
+        execute_in_container "echo 'root:$ROOT_PASSWORD' | chpasswd"
+        log_success "Root password set"
+    else
+        log_warn "No root password set (this should not happen)"
+    fi
+}
+
 # ============================================================================
 # USAGE & MAIN
 # ============================================================================
@@ -954,6 +996,9 @@ main() {
     create_frigate_directories
     create_docker_compose
     create_frigate_config
+    
+    # Set root password (always)
+    setup_root_password
     
     # Optional features
     if [ "$ENABLE_SSH" = "yes" ] || [ "$ENABLE_SAMBA" = "yes" ]; then

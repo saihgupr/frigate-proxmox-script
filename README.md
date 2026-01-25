@@ -60,6 +60,7 @@ OPTIONS:
 The script will prompt you for:
 
 - **Container ID** - Choose between 100-999 (or auto-select)
+- **Root Password** - Set a password for the `root` user (required for console login)
 - **Hostname** - Default: `frigate`
 - **CPU Cores** - Default: 4
 - **RAM** - Default: 2048 MB (2GB recommended for Docker)
