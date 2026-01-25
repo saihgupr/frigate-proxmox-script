@@ -318,9 +318,10 @@ configure_container() {
     fi
     
     echo ""
+    echo ""
     log_step "Security Configuration"
     
-    # Root Password (Always required for console access)
+    # Root Password (Always required)
     while true; do
         echo "Set the root password for the container (required for console access):"
         read -sp "Root Password: " ROOT_PASSWORD
@@ -341,42 +342,21 @@ configure_container() {
             echo ""
         fi
     done
-
+    
     echo ""
     read -p "Enable SSH access? (Y/n): " enable_ssh
     enable_ssh=${enable_ssh:-Y}
+    
     if [[ "$enable_ssh" =~ ^[Yy]$ ]]; then
         ENABLE_SSH="yes"
         read -p "Enter SSH username (default: frigate): " input_user
         SSH_USER="${input_user:-frigate}"
-        echo ""
         
-        if [ "$SSH_USER" = "root" ]; then
-            SSH_PASSWORD="$ROOT_PASSWORD"
-            log "Using configured root password for SSH access."
-        else
-            # Password confirmation loop for non-root user
-            while true; do
-                echo "Enter password for user '$SSH_USER':"
-                read -sp "Password: " SSH_PASSWORD
-                echo ""
-                
-                if [ -z "$SSH_PASSWORD" ]; then
-                    log_error "Password cannot be empty!"
-                    continue
-                fi
-                
-                read -sp "Confirm password: " SSH_PASSWORD_CONFIRM
-                echo ""
-                
-                if [ "$SSH_PASSWORD" = "$SSH_PASSWORD_CONFIRM" ]; then
-                    break
-                else
-                    log_error "Passwords do not match! Please try again."
-                    echo ""
-                fi
-            done
-        fi
+        # Reuse root password for SSH user
+        SSH_PASSWORD="$ROOT_PASSWORD"
+        log "SSH password will match the root password."
+    else
+        ENABLE_SSH="no"
     fi
     
     echo ""
@@ -863,9 +843,16 @@ EOF
     fi
     
     # Set root Samba password
-    local samba_pass="$SSH_PASSWORD"
+    local samba_pass=""
+    
+    if [ -n "$SSH_PASSWORD" ]; then
+        samba_pass="$SSH_PASSWORD"
+    elif [ -n "$ROOT_PASSWORD" ]; then
+        samba_pass="$ROOT_PASSWORD"
+    fi
+    
     if [ -z "$samba_pass" ]; then
-        log_error "No Samba password provided!"
+        log_error "No password available for Samba setup!"
         return 1
     fi
 
