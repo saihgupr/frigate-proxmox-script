@@ -18,7 +18,6 @@ Optimized for the **Beelink S12** (Intel N95/N100), but compatible with any Inte
 ✅ **Zero-Config Setup** - Smart hardware detection avoids manual indexing  
 ✅ **Intel, NVIDIA, & AMD** - Broad hardware acceleration support via VAAPI/NVDEC  
 ✅ **Hardware Auto-Detection** - Automatically identifies CPU, GPU, and Coral TPU  
-✅ **Hardware Auto-Detection** - Automatically identifies CPU, GPU, and Coral TPU  
 ✅ **Easy Updates** - Simple Docker pulls to keep your NVR current  
 ✅ **Home Assistant Ready** - Default ports and paths pre-configured  
 ✅ **Add-ons Included** - Optional SSH & Samba for easy file management  
