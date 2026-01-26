@@ -46,7 +46,7 @@ FRIGATE_VERSION="stable"  # Docker tag: stable, beta, or specific version
 ENABLE_IGPU="yes"
 FRIGATE_PORT="5000"
 ENABLE_SSH="no"
-SSH_USER="frigate"
+SSH_USER="root"
 SSH_PASSWORD=""
 ENABLE_SAMBA="no"
 ENABLE_SAMBA="no"
@@ -345,8 +345,7 @@ configure_container() {
     
     if [[ "$enable_ssh" =~ ^[Yy]$ ]]; then
         ENABLE_SSH="yes"
-        read -p "Enter SSH username (default: frigate): " input_user
-        SSH_USER="${input_user:-frigate}"
+        SSH_USER="root"
         
         # Reuse root password for SSH user
         SSH_PASSWORD="$ROOT_PASSWORD"
@@ -413,8 +412,6 @@ show_configuration_summary() {
     echo "Frigate Settings:"
     echo "  Docker Image:    ghcr.io/blakeblackshear/frigate:$FRIGATE_VERSION"
     echo "  HW Accel:        $ENABLE_IGPU ($DETECTED_GPU)"
-    echo "  HW Accel:        $ENABLE_IGPU ($DETECTED_GPU)"
-    echo "  Web Port:        $FRIGATE_PORT"
     echo "  Web Port:        $FRIGATE_PORT"
     if [ "$ENABLE_SSH" = "yes" ]; then
         echo "  SSH User:        $SSH_USER"
