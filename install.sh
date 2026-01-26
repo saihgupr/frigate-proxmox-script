@@ -242,8 +242,7 @@ configure_container() {
         fi
     done
     
-    read -p "Enter hostname (default: frigate): " input_hostname
-    CT_HOSTNAME="${input_hostname:-frigate}"
+    CT_HOSTNAME="frigate"
     
     read -p "Enter CPU cores (default: 4): " input_cores
     CT_CORES="${input_cores:-4}"
