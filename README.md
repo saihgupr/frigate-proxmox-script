@@ -45,7 +45,7 @@ wget https://raw.githubusercontent.com/saihgupr/frigate-proxmox-script/main/inst
 bash install.sh
 ```
 
-**Installation takes ~5 minutes**
+**Installation takes ~2 minutes**
 
 ## Usage
 
@@ -264,10 +264,6 @@ pct destroy <CT_ID>
 - **Tutorial**: [Installing Frigate NVR on Proxmox](https://www.mostlychris.com/installing-frigate-nvr-on-proxmox-in-an-lxc-container/)
 - **Official Docs**: [Frigate Installation](https://docs.frigate.video/frigate/installation)
 - **Docker**: [Official Frigate Docker Image](https://github.com/blakeblackshear/frigate)
-
-## License
-
-MIT License - Feel free to use and modify as needed.
 
 ## Contributing
 
