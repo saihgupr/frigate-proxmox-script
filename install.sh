@@ -742,7 +742,7 @@ setup_ssh() {
     
     # Enable and start SSH
     execute_in_container "systemctl enable ssh"
-    execute_in_container "systemctl start ssh"
+    execute_in_container "systemctl restart ssh"
     
     log_success "SSH configured for user: $SSH_USER"
 }
