@@ -640,6 +640,9 @@ create_frigate_config() {
     log_step "Creating initial Frigate configuration..."
     
     local hwaccel_config=""
+    if [ "$ENABLE_IGPU" = "yes" ] && [ "$GPU_PRESET" != "none" ]; then
+        hwaccel_config="  hwaccel_args: $GPU_PRESET"
+    fi
 
     local go2rtc_config=""
     
