@@ -628,6 +628,7 @@ services:
 $device_config
     environment:
       - FRIGATE_RTSP_PASSWORD=password
+      - CONFIG_FILE=/config/config.yml
     shm_size: "256mb"
 EOF
         log_success "docker-compose.yml created"
