@@ -249,6 +249,13 @@ pct exec <CT_ID> -- docker exec frigate python3 -c "import yaml; yaml.safe_load(
 pct exec <CT_ID> -- docker logs frigate 2>&1 | grep -i error
 ```
 
+### PMU: Operation not permitted
+If you see "Unable to poll intel GPU stats: Failed to initialize PMU! (Operation not permitted)" in your logs, run this on your **Proxmox Host**:
+```bash
+sysctl -w kernel.perf_event_paranoid=-1
+```
+*Note: This error usually doesn't stop hardware acceleration from working, but prevents GPU statistics from being collected.*
+
 </details>
 
 ## Updating Frigate
