@@ -59,4 +59,6 @@ echo "Recreating container..."
 pct exec "$CT_ID" -- docker compose -f /opt/frigate/docker-compose.yml up -d
 
 echo -e "${GREEN}Update complete!${NC}"
-echo "Check http://<YOUR_FRIGATE_IP>:5000/api/version"
+# Get container IP
+CT_IP=$(pct exec "$CT_ID" -- hostname -I | awk '{print $1}')
+echo "Check http://${CT_IP}:5000/api/version"
