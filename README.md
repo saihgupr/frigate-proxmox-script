@@ -253,21 +253,36 @@ pct exec <CT_ID> -- docker logs frigate 2>&1 | grep -i error
 
 ## Updating Frigate
 
-1. Edit docker-compose.yml file to change the image tag to the desired version. i.e. ```image: ghcr.io/blakeblackshear/frigate:0.17.0-rc1```
+### Option 1: The Easy Way (Script)
 
-2. Run the following commands:
+Run this single command on your Proxmox host shell:
 
 ```bash
-# Pull the latest image
-pct exec <CT_ID> -- docker compose -f /opt/frigate/docker-compose.yml pull
+bash -c "$(wget -qO- https://raw.githubusercontent.com/saihgupr/frigate-proxmox-script/main/update.sh)"
+```
 
-# Restart with new image
-pct exec <CT_ID> -- docker compose -f /opt/frigate/docker-compose.yml up -d
-```
-3. Verify new version
-```bash
-http://frigate-ip-address:5000/api/version
-```
+It will ask for your Container ID and let you pick the version from a list.
+
+### Option 2: The Manual Way
+
+1. Edit your compose file. Replace `<CT_ID>` with your container ID (e.g., 100).
+
+   ```bash
+   pct exec <CT_ID> -- nano /opt/frigate/docker-compose.yml
+   ```
+   
+   Change the image line to the desired version, e.g.:
+   `image: ghcr.io/blakeblackshear/frigate:0.17.0-rc1`
+
+2. Pull the new image and recreate the container:
+
+   ```bash
+   pct exec <CT_ID> -- docker compose -f /opt/frigate/docker-compose.yml pull
+   pct exec <CT_ID> -- docker compose -f /opt/frigate/docker-compose.yml up -d
+   ```
+
+3. Verify:
+   Check `http://<YOUR_FRIGATE_IP>:5000/api/version` to confirm the update.
 
 ## Uninstallation
 
