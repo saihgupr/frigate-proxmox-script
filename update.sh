@@ -18,6 +18,11 @@ read -p "Enter Container ID: " CT_ID
 # Verify container exists and is running
 if ! pct status "$CT_ID" | grep -q "running"; then
     echo "Error: Container $CT_ID is not running or does not exist."
+    if [ -f "./install.sh" ]; then
+        echo ""
+        echo -e "${YELLOW}Did you mean to run ./install.sh instead?${NC}"
+        echo "This script is for updating an EXISTING installation."
+    fi
     exit 1
 fi
 
