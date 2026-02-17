@@ -21,15 +21,27 @@ echo "--------------------------"
 # Parse arguments
 CT_ID=""
 VERSION=""
+DO_SNAPSHOT=false
+SNAPSHOT_NAME=""
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        -c|--id|--container)
+        -i|--id|--container|-c)
             CT_ID="$2"
             shift 2
             ;;
         -v|--version)
             VERSION="$2"
             shift 2
+            ;;
+        -s|--snapshot)
+            DO_SNAPSHOT=true
+            if [[ -n "$2" && "$2" != -* ]]; then
+                SNAPSHOT_NAME="$2"
+                shift 2
+            else
+                shift
+            fi
             ;;
         *)
             if [[ "$1" =~ ^[0-9]+$ ]] && [ -z "$CT_ID" ]; then
@@ -94,6 +106,26 @@ if [ -z "$VERSION" ]; then
             fi
         done
     fi
+fi
+
+# Snapshot handling
+if [ "$DO_SNAPSHOT" = false ]; then
+    echo -n "Take a snapshot before updating? (Y/n): "
+    read -r snap_choice
+    snap_choice=${snap_choice:-Y}
+    if [[ "$snap_choice" =~ ^[Yy]$ ]]; then
+        DO_SNAPSHOT=true
+    fi
+fi
+
+if [ "$DO_SNAPSHOT" = true ]; then
+    if [ -z "$SNAPSHOT_NAME" ]; then
+        SNAPSHOT_NAME="Before $VERSION Update"
+    fi
+    # Proxmox snapshots don't like spaces in names, but pct snapshot actually allows them if quoted.
+    # However, many Proxmox scripts avoid them. I will allow them as requested.
+    echo "Taking snapshot: $SNAPSHOT_NAME..."
+    pct snapshot "$CT_ID" "$SNAPSHOT_NAME" --description "Automated snapshot before update to $VERSION"
 fi
 
 echo "Updating container $CT_ID to version $VERSION..."
