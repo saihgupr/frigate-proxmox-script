@@ -12,8 +12,29 @@ NC='\033[0m' # No Color
 echo -e "${GREEN}Frigate LXC Update Script${NC}"
 echo "--------------------------"
 
-# Get Container ID
-read -p "Enter Container ID: " CT_ID
+# Parse arguments
+CT_ID=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -c|--id|--container)
+            CT_ID="$2"
+            shift 2
+            ;;
+        *)
+            if [[ "$1" =~ ^[0-9]+$ ]]; then
+                CT_ID="$1"
+                shift
+            else
+                shift
+            fi
+            ;;
+    esac
+done
+
+# Fallback to interactive prompt if not provided
+if [ -z "$CT_ID" ]; then
+    read -p "Enter Container ID: " CT_ID
+fi
 
 # Verify container exists and is running
 if ! pct status "$CT_ID" | grep -q "running"; then

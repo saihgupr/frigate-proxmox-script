@@ -258,7 +258,11 @@ pct exec <CT_ID> -- docker logs frigate 2>&1 | grep -i error
 Run this single command on your Proxmox host shell:
 
 ```bash
+# Basic usage (interactive)
 bash -c "$(wget -qO- https://raw.githubusercontent.com/saihgupr/frigate-proxmox-script/main/update.sh)"
+
+# Skip ID prompt by passing it as an argument
+bash -c "$(wget -qO- https://raw.githubusercontent.com/saihgupr/frigate-proxmox-script/main/update.sh)" -- 108
 ```
 
 It will ask for your Container ID and let you pick the version from a list.
