@@ -84,17 +84,30 @@ fi
 # Fetch Versions (Interactive if not provided or auto-detected)
 if [ -z "$VERSION" ]; then
     echo "Fetching latest versions from GitHub..."
-    # Fetch releases, grab tag_name, limit to top 10, strip "v" prefix, and format into a list
-    AVAILABLE_VERSIONS=$(curl -s https://api.github.com/repos/blakeblackshear/frigate/releases | grep '"tag_name":' | head -n 10 | cut -d '"' -f 4 | sed 's/^v//')
+    # Fetch releases
+    RELEASES=$(curl -s https://api.github.com/repos/blakeblackshear/frigate/releases)
+    AVAILABLE_VERSIONS=$(echo "$RELEASES" | grep '"tag_name":' | head -n 10 | cut -d '"' -f 4 | sed 's/^v//')
+    
+    # Identify latest stable (non-beta, non-rc) for default
+    STABLE_DEFAULT=$(echo "$AVAILABLE_VERSIONS" | grep -vE "beta|rc" | head -n 1)
+    [ -z "$STABLE_DEFAULT" ] && STABLE_DEFAULT=$(echo "$AVAILABLE_VERSIONS" | head -n 1)
 
     if [ -z "$AVAILABLE_VERSIONS" ]; then
         echo "Warning: Could not fetch versions. Defaulting to manual input."
-        read -p "Enter version tag to update to (default: 0.17.0-rc1): " VERSION
-        VERSION=${VERSION:-0.17.0-rc1}
+        read -p "Enter version tag to update to (default: 0.16.4): " VERSION
+        VERSION=${VERSION:-0.16.4}
     else
         echo "Available Versions:"
-        PS3="Select a version (or choose 'Custom'): "
+        PS3="Select a version: "
+        # Use read -r for the menu so we can handle empty input (Enter)
         select opt in $AVAILABLE_VERSIONS "Custom"; do
+            # handle case where user just hits enter
+            if [ -z "$opt" ] && [ -z "$REPLY" ]; then
+                 VERSION=$STABLE_DEFAULT
+                 echo "Using default stable version: $VERSION"
+                 break
+            fi
+
             if [ "$opt" = "Custom" ]; then
                 read -p "Enter custom version tag: " VERSION
                 [ -n "$VERSION" ] && break
@@ -102,13 +115,20 @@ if [ -z "$VERSION" ]; then
                 VERSION=$opt
                 break
             else
+                # If they hit enter without a choice, select doesn't always return empty. 
+                # In some shells, select waits. To be safe, we check if REPLY is empty.
+                if [ -z "$REPLY" ]; then
+                    VERSION=$STABLE_DEFAULT
+                    echo "Using default stable version: $VERSION"
+                    break
+                fi
                 echo "Invalid selection."
             fi
         done
     fi
 fi
 
-# Snapshot handling
+# Snapshot handling prompt (only if not already set by flags)
 if [ "$DO_SNAPSHOT" = false ]; then
     echo -n "Take a snapshot before updating? (Y/n): "
     read -r snap_choice
@@ -118,12 +138,14 @@ if [ "$DO_SNAPSHOT" = false ]; then
     fi
 fi
 
+
 if [ "$DO_SNAPSHOT" = true ]; then
     if [ -z "$SNAPSHOT_NAME" ]; then
-        SNAPSHOT_NAME="Before $VERSION Update"
+        SNAPSHOT_NAME="Before-$VERSION-Update"
     fi
-    # Proxmox snapshots don't like spaces in names, but pct snapshot actually allows them if quoted.
-    # However, many Proxmox scripts avoid them. I will allow them as requested.
+    # Proxmox snapshots name: Alphanumeric and dashes only
+    SNAPSHOT_NAME=$(echo "$SNAPSHOT_NAME" | sed 's/[^a-zA-Z0-9-]/-/g')
+    
     echo "Taking snapshot: $SNAPSHOT_NAME..."
     pct snapshot "$CT_ID" "$SNAPSHOT_NAME" --description "Automated snapshot before update to $VERSION"
 fi
@@ -141,6 +163,7 @@ pct exec "$CT_ID" -- docker compose -f /opt/frigate/docker-compose.yml pull
 
 echo "Recreating container..."
 pct exec "$CT_ID" -- docker compose -f /opt/frigate/docker-compose.yml up -d
+
 
 echo -e "${GREEN}Update complete!${NC}"
 # Get container IP

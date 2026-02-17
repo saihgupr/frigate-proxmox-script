@@ -50,8 +50,10 @@ ENABLE_SSH="no"
 SSH_USER="root"
 SSH_PASSWORD=""
 ENABLE_SAMBA="no"
-ENABLE_SAMBA="no"
 ROOT_PASSWORD=""
+DO_SNAPSHOT=false
+SNAPSHOT_NAME=""
+
 
 # Hardware Detection Result Strings
 DETECTED_CPU=""
@@ -509,9 +511,14 @@ configure_container() {
                     echo ""
                 fi
             done
-        fi
+    echo ""
+    read -p "Take a snapshot after container creation? (Y/n): " snap_choice
+    snap_choice=${snap_choice:-Y}
+    if [[ "$snap_choice" =~ ^[Yy]$ ]]; then
+        DO_SNAPSHOT=true
     fi
 }
+
 
 show_configuration_summary() {
     echo ""
@@ -1188,6 +1195,34 @@ main() {
     configure_coral_passthrough
     configure_nvidia_passthrough
     start_container
+    
+    if [ "$DO_SNAPSHOT" = true ]; then
+        log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        log "SNAPSHOT: Creating baseline snapshot"
+        log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        
+        # Resolve actual version for the snapshot name if it's stable/beta
+        local resolved_version="$FRIGATE_VERSION"
+        if [ "$FRIGATE_VERSION" = "stable" ]; then
+            resolved_version=$(curl -s https://api.github.com/repos/blakeblackshear/frigate/releases/latest | grep '"tag_name":' | cut -d '"' -f 4 | sed 's/^v//')
+        elif [ "$FRIGATE_VERSION" = "beta" ]; then
+             resolved_version=$(curl -s https://api.github.com/repos/blakeblackshear/frigate/releases | grep -B 15 '"prerelease": true' | grep '"tag_name":' | head -n 1 | cut -d '"' -f 4 | sed 's/^v//')
+        fi
+        
+        if [ -z "$SNAPSHOT_NAME" ]; then
+            SNAPSHOT_NAME="Initial-$resolved_version-Setup"
+        fi
+        # Sanitize
+        SNAPSHOT_NAME=$(echo "$SNAPSHOT_NAME" | sed 's/[^a-zA-Z0-9-]/-/g')
+        
+        log "Taking snapshot: $SNAPSHOT_NAME..."
+        if [ "$DRY_RUN" = false ]; then
+            pct snapshot "$CT_ID" "$SNAPSHOT_NAME" --description "Clean baseline after container creation and hardware passthrough"
+            log_success "Snapshot $SNAPSHOT_NAME created"
+        else
+            log_dry_run "pct snapshot $CT_ID $SNAPSHOT_NAME"
+        fi
+    fi
     
     echo ""
     log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
