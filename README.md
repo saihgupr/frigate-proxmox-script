@@ -267,17 +267,23 @@ pct exec <CT_ID> -- docker logs frigate 2>&1 | grep -i error
 
 Run this single command on your Proxmox host shell:
 
+##### Interactive (Safe choice)
 ```bash
-# Basic usage (interactive)
 bash <(wget -qO- https://raw.githubusercontent.com/saihgupr/frigate-proxmox-script/main/update.sh)
+```
 
-# Skip prompts (using flags)
+##### Update to latest stable
+```bash
 bash <(wget -qO- https://raw.githubusercontent.com/saihgupr/frigate-proxmox-script/main/update.sh) \
   --id <CT_ID> \
   --version latest
+```
 
-# Quick way (using positional arguments)
-bash <(wget -qO- https://raw.githubusercontent.com/saihgupr/frigate-proxmox-script/main/update.sh) 100 0.17.0-rc2
+##### Force a specific version
+```bash
+bash <(wget -qO- https://raw.githubusercontent.com/saihgupr/frigate-proxmox-script/main/update.sh) \
+  --id <CT_ID> \
+  --version 0.17.0-rc2
 ```
 
 It will ask for your Container ID and let you pick the version from a list.
