@@ -1209,8 +1209,11 @@ main() {
              resolved_version=$(curl -s https://api.github.com/repos/blakeblackshear/frigate/releases | grep -B 15 '"prerelease": true' | grep '"tag_name":' | head -n 1 | cut -d '"' -f 4 | sed 's/^v//')
         fi
         
+        local timestamp=$(date +%Y%m%d_%H%M%S)
         if [ -z "$SNAPSHOT_NAME" ]; then
-            SNAPSHOT_NAME="Initial_${resolved_version}_Setup"
+            SNAPSHOT_NAME="snapshot_${timestamp}"
+        else
+            SNAPSHOT_NAME="${SNAPSHOT_NAME}_${timestamp}"
         fi
         # Sanitize
         SNAPSHOT_NAME=$(echo "$SNAPSHOT_NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')

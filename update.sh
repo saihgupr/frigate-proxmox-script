@@ -131,8 +131,12 @@ fi
 
 
 if [ "$DO_SNAPSHOT" = true ]; then
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
     if [ -z "$SNAPSHOT_NAME" ]; then
-        SNAPSHOT_NAME="Before_${VERSION}_Update"
+        SNAPSHOT_NAME="snapshot_${TIMESTAMP}"
+    else
+        # If user provided a custom name, append timestamp to make it unique
+        SNAPSHOT_NAME="${SNAPSHOT_NAME}_${TIMESTAMP}"
     fi
     # Proxmox snapshots name: Alphanumeric, underscores, and dashes only
     SNAPSHOT_NAME=$(echo "$SNAPSHOT_NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
