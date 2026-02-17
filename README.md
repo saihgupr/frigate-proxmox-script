@@ -267,7 +267,7 @@ pct exec <CT_ID> -- docker logs frigate 2>&1 | grep -i error
 
 Run this single command on your Proxmox host shell:
 
-##### Interactive (Safe choice)
+##### Interactive
 ```bash
 bash <(wget -qO- https://raw.githubusercontent.com/saihgupr/frigate-proxmox-script/main/update.sh)
 ```
@@ -279,7 +279,14 @@ bash <(wget -qO- https://raw.githubusercontent.com/saihgupr/frigate-proxmox-scri
   --version latest
 ```
 
-##### Force a specific version
+##### Update to latest beta
+```bash
+bash <(wget -qO- https://raw.githubusercontent.com/saihgupr/frigate-proxmox-script/main/update.sh) \
+  --id <CT_ID> \
+  --version beta
+```
+
+##### Update to a specific version
 ```bash
 bash <(wget -qO- https://raw.githubusercontent.com/saihgupr/frigate-proxmox-script/main/update.sh) \
   --id <CT_ID> \
