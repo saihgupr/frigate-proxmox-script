@@ -240,6 +240,16 @@ pct exec <CT_ID> -- ls -l /dev/dri/
 pct exec <CT_ID> -- docker exec frigate vainfo
 ```
 
+### NVIDIA GPU Errors
+If you see `Error running prestart hook #0` or `libnvidia-ml.so.1: cannot open shared object file`:
+
+1.  **Check Host Drivers**: Run `nvidia-smi` on your Proxmox host. If it fails, your host-level drivers are broken.
+2.  **Fix Missing Libraries**: On the Proxmox host, run:
+    ```bash
+    sudo ln -s /usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1 /usr/lib/libnvidia-ml.so.1
+    ```
+3.  **Host Toolkit**: Ensure `nvidia-container-toolkit` is installed on the **Proxmox host** itself, not just inside the LXC.
+
 ### Configuration errors
 ```bash
 # Validate YAML syntax

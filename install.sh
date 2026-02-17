@@ -280,27 +280,40 @@ configure_container() {
     log_step "Storage Configuration"
     
     # Get list of storages that support images
-    STORAGE_OPTIONS=$(pvesm status -content images 2>/dev/null | awk 'NR>1 {print $1}')
+    STORAGE_OPTIONS=($(pvesm status -content images 2>/dev/null | awk 'NR>1 {print $1}'))
     
-    if [ -z "$STORAGE_OPTIONS" ]; then
+    if [ ${#STORAGE_OPTIONS[@]} -eq 0 ]; then
         log_warn "Could not detect storage pools automatically. Defaulting to: $CT_STORAGE"
     else
         echo "Available storage pools:"
-        select pool in $STORAGE_OPTIONS "Custom"; do
-            case $pool in
-                Custom)
-                    read -p "Enter custom storage pool name: " CT_STORAGE
-                    break
-                    ;;
-                *)
-                    if [ -n "$pool" ]; then
-                        CT_STORAGE="$pool"
-                        log "Selected storage pool: $CT_STORAGE"
-                        break
-                    fi
-                    ;;
-            esac
+        for i in "${!STORAGE_OPTIONS[@]}"; do
+            echo "  $((i+1))) ${STORAGE_OPTIONS[$i]}"
         done
+        echo "  $(( ${#STORAGE_OPTIONS[@]} + 1 ))) Custom"
+        
+        # Identify default index for local-lvm
+        DEFAULT_INDEX=""
+        for i in "${!STORAGE_OPTIONS[@]}"; do
+            if [[ "${STORAGE_OPTIONS[$i]}" == "local-lvm" ]]; then
+                DEFAULT_INDEX=$((i+1))
+                break
+            fi
+        done
+        
+        PROMPT="Select storage pool"
+        [ -n "$DEFAULT_INDEX" ] && PROMPT="$PROMPT [default: $DEFAULT_INDEX (local-lvm)]"
+        read -p "$PROMPT: " storage_choice
+        storage_choice=${storage_choice:-$DEFAULT_INDEX}
+        
+        if [[ "$storage_choice" =~ ^[0-9]+$ ]] && [ "$storage_choice" -le "${#STORAGE_OPTIONS[@]}" ]; then
+            CT_STORAGE="${STORAGE_OPTIONS[$((storage_choice-1))]}"
+        elif [ "$storage_choice" -eq "$(( ${#STORAGE_OPTIONS[@]} + 1 ))" ]; then
+            read -p "Enter custom storage pool name: " CT_STORAGE
+        else
+            CT_STORAGE="local-lvm"
+            log_warn "Invalid selection. Defaulting to local-lvm."
+        fi
+        log "Selected storage pool: $CT_STORAGE"
     fi
 
     echo ""
@@ -313,20 +326,22 @@ configure_container() {
     if [[ "$add_recordings_disk" =~ ^[Yy]$ ]]; then
         ADD_EXTRA_DISK=true
         echo "Select storage pool for recordings:"
-        select pool in $STORAGE_OPTIONS "Custom"; do
-            case $pool in
-                Custom)
-                    read -p "Enter custom storage pool name: " EXTRA_DISK_STORAGE
-                    break
-                    ;;
-                *)
-                    if [ -n "$pool" ]; then
-                        EXTRA_DISK_STORAGE="$pool"
-                        break
-                    fi
-                    ;;
-            esac
+        for i in "${!STORAGE_OPTIONS[@]}"; do
+            echo "  $((i+1))) ${STORAGE_OPTIONS[$i]}"
         done
+        echo "  $(( ${#STORAGE_OPTIONS[@]} + 1 ))) Custom"
+        
+        read -p "Select storage pool [default: local-lvm]: " extra_choice
+        if [ -z "$extra_choice" ]; then
+            EXTRA_DISK_STORAGE="local-lvm"
+        elif [[ "$extra_choice" =~ ^[0-9]+$ ]] && [ "$extra_choice" -le "${#STORAGE_OPTIONS[@]}" ]; then
+            EXTRA_DISK_STORAGE="${STORAGE_OPTIONS[$((extra_choice-1))]}"
+        elif [ "$extra_choice" -eq "$(( ${#STORAGE_OPTIONS[@]} + 1 ))" ]; then
+            read -p "Enter custom storage pool name: " EXTRA_DISK_STORAGE
+        else
+            EXTRA_DISK_STORAGE="local-lvm"
+        fi
+        log "Selected recordings storage: $EXTRA_DISK_STORAGE"
         read -p "Enter recordings disk size in GB (default: 50): " input_extra_disk
         EXTRA_DISK_SIZE="${input_extra_disk:-50}"
     else
