@@ -511,6 +511,9 @@ configure_container() {
                     echo ""
                 fi
             done
+        fi
+    fi
+
     echo ""
     read -p "Take a snapshot after container creation? (Y/n): " snap_choice
     snap_choice=${snap_choice:-Y}
