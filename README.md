@@ -74,6 +74,21 @@ The script will prompt you for:
 
 ## Post-Installation
 
+### Updating Existing Installations
+
+If you have an existing installation and need the **go2rtc API (1984)** or **Frigate Auth (8971)** ports, you will need to add them manually to your `docker-compose.yml`:
+
+1.  Edit the file: `pct exec <CT_ID> -- nano /opt/frigate/docker-compose.yml`
+2.  Add the ports under the `ports:` section:
+    ```yaml
+          - "1984:1984"  # go2rtc API
+          - "8971:8971"  # Frigate Auth port
+    ```
+3.  Recreate the container:
+    ```bash
+    pct exec <CT_ID> -- docker compose -f /opt/frigate/docker-compose.yml up -d
+    ```
+
 ### Adding Your Cameras
 
 #### Method 1: Edit Config File via SSH

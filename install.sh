@@ -46,6 +46,8 @@ DEBIAN_TEMPLATE="debian-12-standard_12.12-1_amd64.tar.zst"
 FRIGATE_VERSION="stable"  # Docker tag: stable, beta, or specific version
 ENABLE_IGPU="yes"
 FRIGATE_PORT="5000"
+GO2RTC_PORT="1984"
+AUTH_PORT="8971"
 ENABLE_SSH="no"
 SSH_USER="root"
 SSH_PASSWORD=""
@@ -415,6 +417,12 @@ configure_container() {
     read -p "Enter Frigate web port (default: 5000): " input_port
     FRIGATE_PORT="${input_port:-5000}"
     
+    read -p "Enter go2rtc port (default: 1984): " input_go2rtc
+    GO2RTC_PORT="${input_go2rtc:-1984}"
+    
+    read -p "Enter Frigate Auth port (default: 8971): " input_auth
+    AUTH_PORT="${input_auth:-8971}"
+    
     echo ""
     echo "Frigate Docker Image:"
     echo "  1) stable (recommended)"
@@ -511,6 +519,9 @@ configure_container() {
                     echo ""
                 fi
             done
+        fi
+    fi
+
     echo ""
     read -p "Take a snapshot after container creation? (Y/n): " snap_choice
     snap_choice=${snap_choice:-Y}
@@ -549,6 +560,8 @@ show_configuration_summary() {
     echo "  Docker Image:    ghcr.io/blakeblackshear/frigate:$FRIGATE_VERSION"
     echo "  HW Accel:        $ENABLE_IGPU ($DETECTED_GPU)"
     echo "  Web Port:        $FRIGATE_PORT"
+    echo "  go2rtc Port:     $GO2RTC_PORT"
+    echo "  Auth Port:       $AUTH_PORT"
     if [ "$ENABLE_SSH" = "yes" ]; then
         echo "  SSH User:        $SSH_USER"
     fi
@@ -866,6 +879,8 @@ services:
       - "8554:8554"  # RTSP feeds
       - "8555:8555/tcp"  # WebRTC
       - "8555:8555/udp"  # WebRTC
+      - "$GO2RTC_PORT:$GO2RTC_PORT"  # go2rtc API
+      - "$AUTH_PORT:$AUTH_PORT"  # Frigate Auth port
 $device_config
     environment:
       - FRIGATE_RTSP_PASSWORD=password
