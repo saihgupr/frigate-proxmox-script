@@ -5,9 +5,9 @@ An automated, Docker-based installation script for deploying [Frigate NVR](https
 ### What it does:
 1. Creates a privileged **LXC container**
 2. Installs **Docker** and **Docker Compose**
-3. Deploys **Frigate NVR** with Intel iGPU hardware acceleration
+3. Deploys **Frigate NVR** with **Intel iGPU** hardware acceleration (Primary Platform)
 
-Optimized for the **Beelink S12** (Intel N95/N100), but compatible with most Intel-based Proxmox host.
+Optimized for the **Beelink S12** (Intel N95/N100), but compatible with most Intel-based Proxmox hosts.
 
 ![](images/1.png)
 ![](images/2.png)
@@ -15,8 +15,8 @@ Optimized for the **Beelink S12** (Intel N95/N100), but compatible with most Int
 ## Features
 
 ✅ **Docker-Based** - Official Frigate images for reliability and speed  
-✅ **Zero-Config Setup** - Smart hardware detection avoids manual indexing  
-✅ **Intel, NVIDIA, & AMD** - Broad hardware acceleration support via VAAPI/NVDEC  
+✅ **Intel iGPU (Primary)** - First-class support for Intel-based hardware acceleration  
+✅ **NVIDIA & AMD (Best-Effort)** - Experimental support for non-Intel hardware  
 ✅ **Hardware Auto-Detection** - Automatically identifies CPU, GPU, and Coral TPU  
 ✅ **Easy Updates** - Simple Docker pulls to keep your NVR current  
 ✅ **Home Assistant Ready** - Default ports and paths pre-configured  
@@ -26,8 +26,9 @@ Optimized for the **Beelink S12** (Intel N95/N100), but compatible with most Int
 
 - **Proxmox VE** 7.0 or later
 - **Root access** on Proxmox host
-- **Intel iGPU, NVIDIA GPU, or AMD GPU** (recommended for low CPU usage)
-- **Google Coral TPU** (optional)
+- **Intel iGPU** (Primary support)
+- **NVIDIA/AMD GPU** (Experimental / Best-effort only)
+- **Google Coral TPU** (Optional)
 
 ## Quick Start
 
@@ -363,3 +364,13 @@ pct destroy <CT_ID>
 ## Contributing
 
 Issues and pull requests are welcome! Star the repo if you find it useful. ⭐
+
+## Scope of Support
+
+This project is a personal automation script designed primarily for **Intel iGPU-based mini PCs** (e.g., Beelink N95/N100). 
+
+- **Primary Support**: Hardware detection and setup issues for Intel iGPU configurations.
+- **Experimental Support**: NVIDIA and AMD GPU configurations. These are included as a convenience but often require host-level driver troubleshooting that falls outside the scope of this project.
+- **Out of Scope**: Individual network troubleshooting, remote storage (NFS/SMB) mounting issues, or complex Docker network configurations.
+
+If you are using non-Intel hardware, please ensure your host-side drivers are fully functional before reporting an issue.

@@ -73,11 +73,11 @@ fi
 # Handle latest/beta keywords
 if [ "$VERSION" = "latest" ]; then
     echo "Fetching latest stable version..."
-    VERSION=$(curl -s https://api.github.com/repos/blakeblackshear/frigate/releases/latest | grep '"tag_name":' | cut -d '"' -f 4 | sed 's/^v//')
+    VERSION=$(curl -s https://api.github.com/repos/blakeblackshear/frigate/releases/latest | grep -o '"tag_name": *"[^"]*"' | head -n 1 | cut -d '"' -f 4 | sed 's/^v//')
     [ -z "$VERSION" ] && error_exit "Could not fetch latest stable version."
 elif [ "$VERSION" = "beta" ]; then
     echo "Fetching latest beta version..."
-    VERSION=$(curl -s https://api.github.com/repos/blakeblackshear/frigate/releases | grep -B 15 '"prerelease": true' | grep '"tag_name":' | head -n 1 | cut -d '"' -f 4 | sed 's/^v//')
+    VERSION=$(curl -s https://api.github.com/repos/blakeblackshear/frigate/releases | grep -B 15 '"prerelease": true' | grep -o '"tag_name": *"[^"]*"' | head -n 1 | cut -d '"' -f 4 | sed 's/^v//')
     [ -z "$VERSION" ] && error_exit "Could not fetch latest beta version."
 fi
 
@@ -86,7 +86,7 @@ if [ -z "$VERSION" ]; then
     echo "Fetching latest versions from GitHub..."
     # Fetch releases
     RELEASES=$(curl -s https://api.github.com/repos/blakeblackshear/frigate/releases)
-    AVAILABLE_VERSIONS=$(echo "$RELEASES" | grep '"tag_name":' | head -n 10 | cut -d '"' -f 4 | sed 's/^v//')
+    AVAILABLE_VERSIONS=$(echo "$RELEASES" | grep -o '"tag_name": *"[^"]*"' | head -n 10 | cut -d '"' -f 4 | sed 's/^v//')
     
     if [ -z "$AVAILABLE_VERSIONS" ]; then
         echo "Warning: Could not fetch versions. Defaulting to manual input."

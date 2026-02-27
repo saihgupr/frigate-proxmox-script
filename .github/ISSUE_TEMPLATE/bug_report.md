@@ -22,6 +22,7 @@ A clear and concise description of what you expected to happen.
 **Environment Info:**
 - Proxmox Version: [e.g. 8.1.3]
 - Hardware: [e.g. Beelink S12, Intel N100]
+- GPU Type: [e.g. Intel iGPU, NVIDIA GTX 1080, AMD, or None]
 - Frigate Version: [e.g. 0.16.0]
 
 **Additional context**
