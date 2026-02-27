@@ -916,9 +916,7 @@ create_frigate_config() {
     local detector_config="detectors:
   ov:
     type: openvino
-    device: CPU
-    model:
-      path: /openvino-model/ssdlite_mobilenet_v2.xml"
+    device: CPU"
     
     if [ "$DETECTED_CORAL" = "USB" ]; then
         detector_config="detectors:
@@ -934,9 +932,7 @@ create_frigate_config() {
         detector_config="detectors:
   ov:
     type: openvino
-    device: GPU
-    model:
-      path: /openvino-model/ssdlite_mobilenet_v2.xml"
+    device: GPU"
     fi
 
     if [ "$DRY_RUN" = false ]; then
