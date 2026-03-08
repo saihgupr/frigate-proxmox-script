@@ -775,6 +775,43 @@ EOF
     fi
 }
 
+create_container_summary_dashboard() {
+    log_step "Creating Proxmox summary dashboard..."
+    
+    local ip_address
+    ip_address=$(pct exec "$CT_ID" -- hostname -I | awk '{print $1}' || echo "<IP_ADDRESS>")
+    
+    # Construct Markdown Description
+    local description="# Frigate Proxmox Script
+---
+**Quick Access**
+| Service | URL |
+| :--- | :--- |
+| Web UI | http://${ip_address}:${FRIGATE_PORT} |
+| go2rtc API | http://${ip_address}:${GO2RTC_PORT} |
+| Frigate Auth | http://${ip_address}:${AUTH_PORT} |
+
+**Hardware Profile**
+- GPU Acceleration: ${DETECTED_GPU}
+- Coral Detector: ${DETECTED_CORAL:-none}
+- SHM Size: ${SHM_SIZE}
+- Resources: ${CT_RAM}MB RAM / ${CT_CORES} CPU Cores
+
+**File Locations**
+- Configuration: /opt/frigate/config/config.yml
+- Media Storage: /opt/frigate/storage
+
+---
+GitHub: [saihgupr/frigate-proxmox-script](https://github.com/saihgupr/frigate-proxmox-script)
+Support: [Buy me a coffee](https://ko-fi.com/saihgupr)"
+
+    if [ "$DRY_RUN" = false ]; then
+        pct set "$CT_ID" --description "$description"
+    else
+        log_dry_run "Set container description to professional dashboard"
+    fi
+}
+
 start_container() {
     log_step "Starting container $CT_ID..."
     
@@ -1309,6 +1346,7 @@ main() {
     log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
     start_frigate
+    create_container_summary_dashboard
     
     # Completion
     echo ""
