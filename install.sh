@@ -781,20 +781,24 @@ create_container_summary_dashboard() {
     local ip_address
     ip_address=$(pct exec "$CT_ID" -- hostname -I | awk '{print $1}' || echo "<IP_ADDRESS>")
     
+    local coral_line=""
+    if [ -n "$DETECTED_CORAL" ] && [ "$DETECTED_CORAL" != "none" ]; then
+        coral_line="- Coral Detector: ${DETECTED_CORAL}\n"
+    fi
+
     # Construct Markdown Description
-    local description="# Frigate Proxmox Script
----
+    local description=$(echo -e "# Frigate Proxmox Script
+
 **Quick Access**
 | Service | URL |
 | :--- | :--- |
 | Web UI | http://${ip_address}:${FRIGATE_PORT} |
 | go2rtc API | http://${ip_address}:${GO2RTC_PORT} |
-| Frigate Auth | http://${ip_address}:${AUTH_PORT} |
+| Frigate Auth | https://${ip_address}:${AUTH_PORT} |
 
 **Hardware Profile**
 - GPU Acceleration: ${DETECTED_GPU}
-- Coral Detector: ${DETECTED_CORAL:-none}
-- SHM Size: ${SHM_SIZE}
+${coral_line}- SHM Size: ${SHM_SIZE}
 - Resources: ${CT_RAM}MB RAM / ${CT_CORES} CPU Cores
 
 **File Locations**
@@ -803,7 +807,7 @@ create_container_summary_dashboard() {
 
 ---
 GitHub: [saihgupr/frigate-proxmox-script](https://github.com/saihgupr/frigate-proxmox-script)
-Support: [Buy me a coffee](https://ko-fi.com/saihgupr)"
+Support: [Buy me a coffee](https://ko-fi.com/saihgupr)")
 
     if [ "$DRY_RUN" = false ]; then
         pct set "$CT_ID" --description "$description"
@@ -1368,6 +1372,7 @@ main() {
         echo ""
         echo "Frigate Access:"
         echo "  Web Interface: http://${container_ip}:${FRIGATE_PORT}"
+        echo "  Frigate Auth:  https://${container_ip}:${AUTH_PORT}"
         echo ""
         echo "Configuration:"
         echo "  Directory:     /opt/frigate"

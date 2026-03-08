@@ -84,7 +84,7 @@ If you have an existing installation and need the **go2rtc API (1984)** or **Fri
 2.  Add the ports under the `ports:` section:
     ```yaml
           - "1984:1984"  # go2rtc API
-          - "8971:8971"  # Frigate Auth port
+          - "8971:8971"  # Frigate Auth port (Requires HTTPS)
     ```
 3.  Recreate the container:
     ```bash
