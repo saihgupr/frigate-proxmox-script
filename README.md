@@ -71,6 +71,7 @@ The script will prompt you for:
 - **Network** - DHCP or static IP
 - **Intel iGPU** - Enable hardware acceleration (recommended)
 - **Web Port** - Default: 5000 (Home Assistant compatible)
+- **SHM Size** - Default: 256mb (Configurable for high-resolution streams)
 - **Docker Image** - stable, beta, or custom version tag
 
 ## Post-Installation
