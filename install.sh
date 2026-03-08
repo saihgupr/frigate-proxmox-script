@@ -424,7 +424,7 @@ configure_container() {
     read -p "Enter Frigate Auth port (default: 8971): " input_auth
     AUTH_PORT="${input_auth:-8971}"
     
-    read -p "Enter Frigate SHM size (e.g., 256mb, 1gb) [default: 256mb]: " input_shm
+    read -p "Enter Frigate SHM size (default: 256mb): " input_shm
     SHM_SIZE="${input_shm:-256mb}"
 
     echo ""
