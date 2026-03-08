@@ -362,10 +362,6 @@ pct destroy <CT_ID>
 - **Official Docs**: [Frigate Installation](https://docs.frigate.video/frigate/installation)
 - **Docker**: [Official Frigate Docker Image](https://github.com/blakeblackshear/frigate)
 
-## Contributing
-
-Issues and pull requests are welcome! Star the repo if you find it useful. ⭐
-
 ## Scope of Support
 
 This project is a personal automation script designed primarily for **Intel iGPU-based mini PCs** (e.g., Beelink N95/N100). 
@@ -375,3 +371,9 @@ This project is a personal automation script designed primarily for **Intel iGPU
 - **Out of Scope**: Individual network troubleshooting, remote storage (NFS/SMB) mounting issues, or complex Docker network configurations.
 
 If you are using non-Intel hardware, please ensure your host-side drivers are fully functional before reporting an issue.
+
+## Support & Feedback
+
+If you encounter any issues or have feature requests, please open an issue on GitHub.
+
+If you find it useful, consider giving it a star ⭐ or [making a donation](https://ko-fi.com/saihgupr) to support development.
