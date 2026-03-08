@@ -680,11 +680,9 @@ configure_igpu_passthrough() {
     if [ "$DRY_RUN" = false ]; then
         cat >> "$lxc_conf" << EOF
 
-# Intel iGPU Passthrough
+# Frigate: iGPU Passthrough + AppArmor
 lxc.cgroup2.devices.allow: c 226:* rwm
 lxc.mount.entry: /dev/dri dev/dri none bind,optional,create=dir
-
-# Allow unrestricted Apparmor access (required for sysctl and device passthrough)
 lxc.apparmor.profile = unconfined
 EOF
         log_success "iGPU passthrough and Apparmor profile configured in $lxc_conf"
@@ -706,7 +704,7 @@ configure_coral_passthrough() {
         if ! grep -q "apex_0" "$lxc_conf"; then
             cat >> "$lxc_conf" << EOF
 
-# Google Coral PCIe Passthrough
+# Frigate: Google Coral PCIe Passthrough
 lxc.cgroup2.devices.allow: c 120:* rwm
 lxc.mount.entry: /dev/apex_0 dev/apex_0 none bind,optional,create=file
 EOF
@@ -732,7 +730,7 @@ configure_nvidia_passthrough() {
         if ! grep -q "nvidia" "$lxc_conf"; then
             cat >> "$lxc_conf" << EOF
 
-# NVIDIA GPU Passthrough
+# Frigate: NVIDIA GPU Passthrough
 lxc.cgroup2.devices.allow: c 195:* rwm
 lxc.cgroup2.devices.allow: c 508:* rwm
 lxc.cgroup2.devices.allow: c 511:* rwm
@@ -762,12 +760,14 @@ configure_shm_size() {
         if ! grep -q "lxc.mount.entry: tmpfs dev/shm tmpfs" "$lxc_conf"; then
             cat >> "$lxc_conf" << EOF
 
-# Frigate SHM Size
+# Frigate: SHM Size (${mount_size})
 lxc.mount.entry: tmpfs dev/shm tmpfs rw,nosuid,nodev,create=dir,size=${mount_size} 0 0
 EOF
             log_success "SHM size (${mount_size}) configured in $lxc_conf"
         else
             sed -i "s|lxc.mount.entry: tmpfs dev/shm tmpfs.*|lxc.mount.entry: tmpfs dev/shm tmpfs rw,nosuid,nodev,create=dir,size=${mount_size} 0 0|" "$lxc_conf"
+            # Also update the comment if it exists
+            sed -i "s|# Frigate: SHM Size.*|# Frigate: SHM Size (${mount_size})|" "$lxc_conf"
             log_success "SHM size updated to ${mount_size} in $lxc_conf"
         fi
     else
