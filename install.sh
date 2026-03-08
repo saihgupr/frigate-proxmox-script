@@ -48,6 +48,7 @@ ENABLE_IGPU="yes"
 FRIGATE_PORT="5000"
 GO2RTC_PORT="1984"
 AUTH_PORT="8971"
+SHM_SIZE="256mb"
 ENABLE_SSH="no"
 SSH_USER="root"
 SSH_PASSWORD=""
@@ -423,6 +424,9 @@ configure_container() {
     read -p "Enter Frigate Auth port (default: 8971): " input_auth
     AUTH_PORT="${input_auth:-8971}"
     
+    read -p "Enter Frigate SHM size (e.g., 256mb, 1gb) [default: 256mb]: " input_shm
+    SHM_SIZE="${input_shm:-256mb}"
+
     echo ""
     echo "Frigate Docker Image:"
     echo "  1) stable (recommended)"
@@ -562,6 +566,7 @@ show_configuration_summary() {
     echo "  Web Port:        $FRIGATE_PORT"
     echo "  go2rtc Port:     $GO2RTC_PORT"
     echo "  Auth Port:       $AUTH_PORT"
+    echo "  SHM Size:        $SHM_SIZE"
     if [ "$ENABLE_SSH" = "yes" ]; then
         echo "  SSH User:        $SSH_USER"
     fi
@@ -887,7 +892,7 @@ $device_config
       - CONFIG_FILE=/config/config.yml
     cap_add:
       - CAP_PERFMON
-    shm_size: "256mb"
+    shm_size: "$SHM_SIZE"
 EOF
         log_success "docker-compose.yml created"
     else
