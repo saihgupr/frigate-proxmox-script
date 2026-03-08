@@ -424,8 +424,8 @@ configure_container() {
     read -p "Enter Frigate Auth port (default: 8971): " input_auth
     AUTH_PORT="${input_auth:-8971}"
     
-    read -p "Enter Frigate SHM size (default: 256mb): " input_shm
-    SHM_SIZE="${input_shm:-256mb}"
+    read -p "Enter Frigate SHM size (default: 512mb): " input_shm
+    SHM_SIZE="${input_shm:-512mb}"
 
     echo ""
     echo "Frigate Docker Image:"
@@ -748,6 +748,30 @@ EOF
         fi
     else
         log_dry_run "Add NVIDIA GPU passthrough configuration to $lxc_conf"
+    fi
+}
+
+configure_shm_size() {
+    log_step "Configuring SHM size..."
+    
+    local lxc_conf="/etc/pve/lxc/${CT_ID}.conf"
+    # Proxmox lxc.mount.entry size uses M for Megabytes and G for Gigabytes
+    local mount_size=$(echo "$SHM_SIZE" | sed -E 's/([0-9]+)mb/\1M/gi; s/([0-9]+)gb/\1G/gi')
+    
+    if [ "$DRY_RUN" = false ]; then
+        if ! grep -q "lxc.mount.entry: tmpfs dev/shm tmpfs" "$lxc_conf"; then
+            cat >> "$lxc_conf" << EOF
+
+# Frigate SHM Size
+lxc.mount.entry: tmpfs dev/shm tmpfs rw,nosuid,nodev,create=dir,size=${mount_size} 0 0
+EOF
+            log_success "SHM size (${mount_size}) configured in $lxc_conf"
+        else
+            sed -i "s|lxc.mount.entry: tmpfs dev/shm tmpfs.*|lxc.mount.entry: tmpfs dev/shm tmpfs rw,nosuid,nodev,create=dir,size=${mount_size} 0 0|" "$lxc_conf"
+            log_success "SHM size updated to ${mount_size} in $lxc_conf"
+        fi
+    else
+        log_dry_run "Add/Update SHM size (${mount_size}) in $lxc_conf"
     fi
 }
 
@@ -1214,6 +1238,7 @@ main() {
     configure_igpu_passthrough
     configure_coral_passthrough
     configure_nvidia_passthrough
+    configure_shm_size
     start_container
     
     if [ "$DO_SNAPSHOT" = true ]; then
