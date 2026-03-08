@@ -789,7 +789,6 @@ create_container_summary_dashboard() {
     # Construct Markdown Description
     local description=$(echo -e "# Frigate Proxmox Script
 
-**Quick Access**
 | Service | URL |
 | :--- | :--- |
 | Web UI | http://${ip_address}:${FRIGATE_PORT} |
@@ -807,6 +806,7 @@ ${coral_line}- SHM Size: ${SHM_SIZE}
 
 ---
 GitHub: [saihgupr/frigate-proxmox-script](https://github.com/saihgupr/frigate-proxmox-script)
+
 Support: [Buy me a coffee](https://ko-fi.com/saihgupr)")
 
     if [ "$DRY_RUN" = false ]; then
