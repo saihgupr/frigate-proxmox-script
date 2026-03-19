@@ -163,4 +163,4 @@ pct exec "$CT_ID" -- docker compose -f /opt/frigate/docker-compose.yml up -d
 echo -e "${GREEN}Update complete!${NC}"
 # Get container IP
 CT_IP=$(pct exec "$CT_ID" -- hostname -I | awk '{print $1}')
-echo "Check http://${CT_IP}:5000/api/version"
+echo -e "Check \033]8;;http://${CT_IP}:5000/api/version\007http://${CT_IP}:5000/api/version\033]8;;\007"
