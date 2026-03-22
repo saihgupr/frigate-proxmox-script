@@ -13,6 +13,9 @@
 
 ## [1.0.8] - 2026-03-18
 
+### Added
+- Scripts now include terminal-compliant clickable links for easier access to the Web UI.
+
 ### Fixed
 - Detect USB Coral devices that report as "Global Unichip Corp" in `lsusb`.
 
