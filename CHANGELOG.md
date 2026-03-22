@@ -1,4 +1,14 @@
-# Changelog
+## [1.0.9] - 2026-03-22
+
+### Added
+- Proactive disk space checks in `update.sh` before pulling new images.
+- New `--prune` (`-p`) flag in `update.sh` to clear unused Docker data.
+- Automated pruning prompt in `update.sh` when space is low (< 5GB).
+- Dynamic resource checks in `install.sh` targeting the user-selected storage pool.
+
+### Fixed
+- Robust Google Coral USB detection: Added support for "Google Inc" name and `18d1:9302` USB ID.
+- Replaced hardcoded `/var/lib/vz` space check with pool-aware validation.
 
 ## [1.0.8] - 2026-03-18
 

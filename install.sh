@@ -245,7 +245,7 @@ check_hardware() {
     fi
 
     # Coral Detection
-    if lsusb 2>/dev/null | grep -Eqi "Google Inc\. Digital Enlightenment|Global Unichip Corp"; then
+    if lsusb 2>/dev/null | grep -Eqi "18d1:9302|Google Inc|Global Unichip Corp"; then
         DETECTED_CORAL="USB"
         log_success "Detected Google Coral (USB)"
     elif lspci 2>/dev/null | grep -qi "Global Unichip Corp"; then
