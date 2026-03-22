@@ -58,7 +58,8 @@ OPTIONS:
     --help          Show help message
 ```
 
-## Configuration Options
+<details>
+<summary><h2>Configuration Options</h2></summary>
 
 The script will prompt you for:
 
@@ -74,9 +75,12 @@ The script will prompt you for:
 - **SHM Size** - Default: 512mb (Configurable for high-resolution streams, e.g., `1gb`, `2gb`)
 - **Docker Image** - stable, beta, or custom version tag
 
+</details>
+
 ## Post-Installation
 
-### Updating Existing Installations
+<details>
+<summary><h3>Updating Existing Installations</h3></summary>
 
 If you have an existing installation and need the **go2rtc API (1984)** or **Frigate Auth (8971)** ports, you will need to add them manually to your `docker-compose.yml`:
 
@@ -91,7 +95,10 @@ If you have an existing installation and need the **go2rtc API (1984)** or **Fri
     pct exec <CT_ID> -- docker compose -f /opt/frigate/docker-compose.yml up -d
     ```
 
-### Adding Your Cameras
+</details>
+
+<details>
+<summary><h3>Adding Your Cameras</h3></summary>
 
 #### Method 1: Edit Config File via SSH
 
@@ -122,7 +129,10 @@ Starting in Frigate 0.14+, you can edit the configuration directly in the web in
 3. Make your changes
 4. Click **Save** (Frigate will automatically restart)
 
-### Samba Network File Sharing
+</details>
+
+<details>
+<summary><h3>Samba Network File Sharing</h3></summary>
 
 If you enabled Samba during installation, you can access and edit Frigate files directly from your computer using network file shares.
 
@@ -164,6 +174,8 @@ nano /mnt/frigate/config.yml
 - **Permissions**: Full read/write access
 - **User**: All files created as `root` user automatically
 
+</details>
+
 ### File Locations
 
 ```
@@ -174,9 +186,10 @@ nano /mnt/frigate/config.yml
 └── storage/               # Recordings and snapshots
 ```
 
-## Hardware Acceleration
+<details>
+<summary><h2>Hardware Acceleration & Detection</h2></summary>
 
-## How Smart Detection Works
+### How Smart Detection Works
 
 The script performs a "pre-flight" scan of your Proxmox host to determine the best possible configuration for your specific hardware:
 
@@ -223,6 +236,8 @@ model:
 detect:
   enabled: true
 ```
+
+</details>
 
 <details>
 <summary><h2>Troubleshooting</h2></summary>
@@ -280,16 +295,19 @@ pct exec <CT_ID> -- docker logs frigate 2>&1 | grep -i error
 
 ## Updating Frigate
 
-### Option 1: The Easy Way (Script)
+<details>
+<summary>Option 1: The Easy Way (Script)</summary>
 
 Choose the update method that best fits your needs. You can run the script interactively, or skip the prompts entirely by passing your container ID and version.
 
-##### Interactive
+### Interactive
+
 ```bash
 bash <(wget -qO- https://raw.githubusercontent.com/saihgupr/frigate-proxmox-script/main/update.sh)
 ```
 
-##### Command Line Flags
+### Command Line Flags
+
 The script supports several flags to automate the update process and ensure safety:
 
 | Flag | Short | Description |
@@ -299,9 +317,7 @@ The script supports several flags to automate the update process and ensure safe
 | `--snapshot` | `-s` | Take a snapshot before updating. Optionally provide a name. |
 | `--prune` | `-p` | Prune unused Docker images and layers before updating. |
 
-**Examples:**
-
-##### Examples
+### Examples
 
 **Interactive Update**
 ```bash
@@ -322,37 +338,38 @@ bash <(wget -qO- https://raw.githubusercontent.com/saihgupr/frigate-proxmox-scri
   -i <CT_ID> \
   -v 0.17.0-rc2 \
   -s "Pre-Upgrade"
+```
 
 **Prune Docker Space Only**
 ```bash
 bash <(wget -qO- https://raw.githubusercontent.com/saihgupr/frigate-proxmox-script/main/update.sh) -i <CT_ID> -p
 ```
-```
 
 > [!TIP]
 > Use `-i` for Container ID, `-v` for Version, and `-s` for Snapshot. If no flags are provided, the script will guide you through the settings and ask if you'd like a snapshot before starting.
 
+</details>
 
-### Option 2: The Manual Way
+<details>
+<summary>Option 2: The Manual Way</summary>
 
 1. Edit your compose file. Replace `<CT_ID>` with your container ID (e.g., 100).
-
    ```bash
    pct exec <CT_ID> -- nano /opt/frigate/docker-compose.yml
    ```
-   
-   Change the image line to the desired version, e.g.:
+2. Change the image line to the desired version, e.g.:
    `image: ghcr.io/blakeblackshear/frigate:0.17.0-rc1`
 
-2. Pull the new image and recreate the container:
-
+3. Pull the new image and recreate the container:
    ```bash
    pct exec <CT_ID> -- docker compose -f /opt/frigate/docker-compose.yml pull
    pct exec <CT_ID> -- docker compose -f /opt/frigate/docker-compose.yml up -d
    ```
 
-3. Verify:
+4. Verify:
    Check `http://<YOUR_FRIGATE_IP>:5000/api/version` to confirm the update.
+
+</details>
 
 ## Uninstallation
 
