@@ -23,6 +23,8 @@ CT_ID=""
 VERSION=""
 DO_SNAPSHOT=false
 SNAPSHOT_NAME=""
+DO_PRUNE=false
+AUTO_PRUNE_LIMIT=5 # GB
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -42,6 +44,10 @@ while [[ $# -gt 0 ]]; do
             else
                 shift
             fi
+            ;;
+        -p|--prune)
+            DO_PRUNE=true
+            shift
             ;;
         *)
             if [[ "$1" =~ ^[0-9]+$ ]] && [ -z "$CT_ID" ]; then
@@ -144,6 +150,39 @@ if [ "$DO_SNAPSHOT" = true ]; then
     echo "Taking snapshot: $SNAPSHOT_NAME..."
     pct snapshot "$CT_ID" "$SNAPSHOT_NAME" --description "Automated snapshot before update to $VERSION"
 fi
+
+# Function to check disk space
+check_container_space() {
+    log_step "Checking available disk space in container $CT_ID..."
+    local avail_kb
+    avail_kb=$(pct exec "$CT_ID" -- df / --output=avail | tail -1 | xargs)
+    local avail_gb=$((avail_kb / 1024 / 1024))
+    
+    if [ "$avail_gb" -lt "$AUTO_PRUNE_LIMIT" ]; then
+        echo -e "${YELLOW}Warning: Only ${avail_gb}GB available on container root disk.${NC}"
+        echo -n "Would you like to prune unused Docker images and layers to free up space? (Y/n): "
+        read -r prune_choice
+        prune_choice=${prune_choice:-Y}
+        if [[ "$prune_choice" =~ ^[Yy]$ ]]; then
+            echo "Pruning Docker system..."
+            pct exec "$CT_ID" -- docker system prune -a -f
+            # Re-check space
+            avail_kb=$(pct exec "$CT_ID" -- df / --output=avail | tail -1 | xargs)
+            avail_gb=$((avail_kb / 1024 / 1024))
+            echo "Space after pruning: ${avail_gb}GB"
+        fi
+    else
+        echo "Available disk space: ${avail_gb}GB (Requirement: >${AUTO_PRUNE_LIMIT}GB)"
+    fi
+}
+
+if [ "$DO_PRUNE" = true ]; then
+    echo "Pruning Docker system in container $CT_ID..."
+    pct exec "$CT_ID" -- docker system prune -a -f
+    [ "$VERSION" = "" ] && exit 0 # Exit if only pruning was requested
+fi
+
+check_container_space
 
 echo "Updating container $CT_ID to version $VERSION..."
 

@@ -297,6 +297,7 @@ The script supports several flags to automate the update process and ensure safe
 | `--id` | `-i` | The Proxmox Container ID (e.g., 100) |
 | `--version` | `-v` | Version tag (e.g., `0.17.0-rc2`, `latest`, `beta`) |
 | `--snapshot` | `-s` | Take a snapshot before updating. Optionally provide a name. |
+| `--prune` | `-p` | Prune unused Docker images and layers before updating. |
 
 **Examples:**
 
@@ -321,6 +322,11 @@ bash <(wget -qO- https://raw.githubusercontent.com/saihgupr/frigate-proxmox-scri
   -i <CT_ID> \
   -v 0.17.0-rc2 \
   -s "Pre-Upgrade"
+
+**Prune Docker Space Only**
+```bash
+bash <(wget -qO- https://raw.githubusercontent.com/saihgupr/frigate-proxmox-script/main/update.sh) -i <CT_ID> -p
+```
 ```
 
 > [!TIP]

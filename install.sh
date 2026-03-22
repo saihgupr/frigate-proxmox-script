@@ -160,16 +160,30 @@ check_root() {
 }
 
 check_resources() {
-    log_step "Checking available resources..."
+    log_step "Checking available resources on storage pool: $CT_STORAGE..."
     
-    local available_space
-    available_space=$(df /var/lib/vz 2>/dev/null | tail -1 | awk '{print $4}')
-    available_space=$((available_space / 1024 / 1024))
+    local storage_info
+    storage_info=$(pvesm status -storage "$CT_STORAGE" 2>/dev/null | tail -1)
     
-    if [ "$available_space" -lt 30 ]; then
-        log_warn "Only ${available_space}GB available. Recommended: 30GB+"
+    if [ -z "$storage_info" ]; then
+        log_warn "Could not retrieve status for storage pool '$CT_STORAGE'. Skipping specific space check."
+        return
+    fi
+    
+    local total used avail pct
+    total=$(echo "$storage_info" | awk '{print $4}')
+    used=$(echo "$storage_info" | awk '{print $5}')
+    avail=$(echo "$storage_info" | awk '{print $6}')
+    pct=$(echo "$storage_info" | awk '{print $7}' | tr -d '%')
+    
+    local avail_gb=$((avail / 1024 / 1024))
+    
+    if [ "$avail_gb" -lt 10 ]; then
+        log_warn "Low space on pool '$CT_STORAGE': Only ${avail_gb}GB available. Recommended: 10GB+ for rootfs."
+    elif [ "$pct" -gt 90 ]; then
+        log_warn "Storage pool '$CT_STORAGE' is ${pct}% full. This may cause issues during operation."
     else
-        log_success "Available disk space: ${available_space}GB"
+        log_success "Storage pool '$CT_STORAGE' has ${avail_gb}GB available (${pct}% used)."
     fi
 }
 
@@ -596,6 +610,8 @@ show_configuration_summary() {
 
 download_debian_template() {
     log_step "Checking for Debian template..."
+    
+    check_resources
     
     log "Updating Proxmox appliance database..."
     if [ "$DRY_RUN" = false ]; then
