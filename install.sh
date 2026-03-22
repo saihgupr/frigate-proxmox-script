@@ -662,6 +662,7 @@ create_lxc_container() {
         --swap 512 \
         --rootfs $CT_STORAGE:$CT_DISK \
         --net0 $net_config \
+        --timezone host \
         --unprivileged 0 \
         --features nesting=1,keyctl=1,fuse=1 \
         --onboot 1 \
@@ -954,6 +955,8 @@ services:
     stop_grace_period: 30s
     image: ghcr.io/blakeblackshear/frigate:$FRIGATE_VERSION
     volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
       - ./config:/config
       - ./storage:/media/frigate
       - type: tmpfs
