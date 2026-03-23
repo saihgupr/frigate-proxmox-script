@@ -19,6 +19,9 @@
 
 ## [1.0.8] - 2026-03-18
 
+### Added
+- Clickable link in terminal output to access the Frigate Web UI.
+
 ### Fixed
 - Detect USB Coral devices that report as "Global Unichip Corp" in `lsusb`.
 
