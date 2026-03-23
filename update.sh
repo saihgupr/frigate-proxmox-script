@@ -166,7 +166,11 @@ if [ "$DO_SNAPSHOT" = true ]; then
     SNAPSHOT_NAME=$(echo "$SNAPSHOT_NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
     
     echo "Taking snapshot: $SNAPSHOT_NAME..."
-    pct snapshot "$CT_ID" "$SNAPSHOT_NAME" --description "Automated snapshot before update to $VERSION"
+    if pct snapshot "$CT_ID" "$SNAPSHOT_NAME" --description "Automated snapshot before update to $VERSION"; then
+        log_success "Snapshot $SNAPSHOT_NAME created"
+    else
+        echo -e "${YELLOW}Warning: Failed to create snapshot '$SNAPSHOT_NAME'. Continuing update anyway...${NC}"
+    fi
 fi
 
 # Function to check disk space

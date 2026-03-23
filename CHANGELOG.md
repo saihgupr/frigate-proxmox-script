@@ -1,3 +1,9 @@
+## [1.1.1] - 2026-03-23
+
+### Fixed
+- Resolved malformed `docker-compose.yml` generation when using NVIDIA and Coral PCIe simultaneously.
+- Made Proxmox snapshots non-fatal in both `install.sh` and `update.sh` to prevent script exit on storage-related failures.
+
 ## [1.1.0] - 2026-03-23
 
 ### Added

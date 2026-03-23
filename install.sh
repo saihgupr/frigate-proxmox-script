@@ -11,7 +11,7 @@ set -euo pipefail
 # GLOBAL VARIABLES
 # ============================================================================
 
-VERSION="1.1.0"
+VERSION="1.1.1"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_FILE="/tmp/frigate-install-$(date +%Y%m%d-%H%M%S).log"
 DRY_RUN=false
@@ -920,10 +920,13 @@ create_frigate_directories() {
 create_docker_compose() {
     log_step "Creating docker-compose.yml..."
     
-    local device_config=""
+    local devices_list=""
+    local deploy_config=""
+
+    # 1. Handle GPU Acceleration (NVIDIA vs Others)
     if [ "$ENABLE_IGPU" = "yes" ]; then
         if [ "$SELECTED_GPU_TYPE" = "nvidia" ]; then
-            device_config="    deploy:
+            deploy_config="    deploy:
       resources:
         reservations:
           devices:
@@ -931,19 +934,33 @@ create_docker_compose() {
               count: 1
               capabilities: [gpu, video]"
         else
-            device_config="    devices:
-      - /dev/dri/renderD128:/dev/dri/renderD128"
+            devices_list="      - /dev/dri/renderD128:/dev/dri/renderD128"
         fi
     fi
 
-    # Add Coral PCIe if detected
+    # 2. Add Coral PCIe if detected
     if [ "$DETECTED_CORAL" = "PCIe" ]; then
-        if [ -n "$device_config" ]; then
-            device_config="$device_config
+        if [ -n "$devices_list" ]; then
+            devices_list="$devices_list
       - /dev/apex_0:/dev/apex_0"
         else
-            device_config="    devices:
-      - /dev/apex_0:/dev/apex_0"
+            devices_list="      - /dev/apex_0:/dev/apex_0"
+        fi
+    fi
+
+    # 3. Combine into device_config
+    local device_config=""
+    if [ -n "$devices_list" ]; then
+        device_config="    devices:
+$devices_list"
+    fi
+    
+    if [ -n "$deploy_config" ]; then
+        if [ -n "$device_config" ]; then
+            device_config="$device_config
+$deploy_config"
+        else
+            device_config="$deploy_config"
         fi
     fi
     
@@ -1328,8 +1345,11 @@ main() {
         
         log "Taking snapshot: $SNAPSHOT_NAME..."
         if [ "$DRY_RUN" = false ]; then
-            pct snapshot "$CT_ID" "$SNAPSHOT_NAME" --description "Clean baseline after container creation and hardware passthrough"
-            log_success "Snapshot $SNAPSHOT_NAME created"
+            if pct snapshot "$CT_ID" "$SNAPSHOT_NAME" --description "Clean baseline after container creation and hardware passthrough" 2>&1 | tee -a "$LOG_FILE"; then
+                log_success "Snapshot $SNAPSHOT_NAME created"
+            else
+                log_warn "Failed to create snapshot '$SNAPSHOT_NAME'. Continuing installation anyway..."
+            fi
         else
             log_dry_run "pct snapshot $CT_ID $SNAPSHOT_NAME"
         fi
