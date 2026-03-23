@@ -26,6 +26,9 @@ CYAN='\033[0;36m'
 MAGENTA='\033[0;35m'
 NC='\033[0m' # No Color
 
+# Set terminal title
+echo -ne "\033]0;Frigate Proxmox Installer\007"
+
 # Container Configuration
 CT_ID=""
 CT_HOSTNAME="frigate"

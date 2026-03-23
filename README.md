@@ -9,8 +9,9 @@ An automated, Docker-based installation script for deploying [Frigate NVR](https
 
 Optimized for the **Beelink S12** (Intel N95/N100), but compatible with most Intel-based Proxmox hosts.
 
-![](images/1.png)
-![](images/2.png)
+![](images/1.1.png)
+![](images/2.1.png)
+![](images/3.1.png)
 
 ## Features
 
