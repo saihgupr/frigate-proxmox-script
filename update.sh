@@ -8,10 +8,25 @@ set -e
 # Colors
 GREEN='\033[0;32m'
 RED='\033[0;31m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Set terminal title
 echo -ne "\033]0;Frigate Proxmox Script\007"
+
+log_step() {
+    echo -e "${BLUE}[STEP]${NC} $1"
+}
+
+log_success() {
+    echo -e "${GREEN}[DONE]${NC} $1"
+}
+
+log_info() {
+    echo -e "${CYAN}[INFO]${NC} $1"
+}
 
 error_exit() {
     echo -e "${RED}Error: $1${NC}"
