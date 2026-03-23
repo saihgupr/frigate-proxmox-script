@@ -11,7 +11,7 @@ RED='\033[0;31m'
 NC='\033[0m' # No Color
 
 # Set terminal title
-echo -ne "\033]0;Frigate Proxmox Update\007"
+echo -ne "\033]0;Frigate Proxmox Script\007"
 
 error_exit() {
     echo -e "${RED}Error: $1${NC}"
