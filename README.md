@@ -1,13 +1,14 @@
 # Frigate Proxmox Script
 
-An automated, Docker-based installation script for deploying [Frigate NVR](https://frigate.video/) on Proxmox VE using an LXC container. This script provisions the full stack end-to-end—no manual setup required.
+A fully automated, one-command script for deploying [Frigate NVR](https://frigate.video/) on Proxmox VE. 
+
+This script builds a production-ready Frigate stack from scratch: provisioning the LXC container, installing Docker, and automatically configuring hardware acceleration.
 
 ### What it does:
-1. Creates a privileged **LXC container**
-2. Installs **Docker** and **Docker Compose**
-3. Deploys **Frigate NVR** with **Intel iGPU** hardware acceleration (Primary Platform)
-
-Optimized for the **Beelink S12** (Intel N95/N100), but compatible with most Intel-based Proxmox hosts.
+✅ **Full Stack Provisioning** - Creates a privileged LXC container with Docker and Compose pre-installed  
+✅ **GPU Accelerated** - Configures Intel iGPU acceleration by default (VAAPI/QSV)  
+✅ **N95/N100 Optimized** - Tailored for the Beelink S12 (Intel N95/N100) and other Intel hosts  
+✅ **Zero Manual Setup** - Handles all the complex nesting, keyctl, and driver passthrough settings  
 
 ![](images/1.1.png)
 ![](images/2.1.png)
