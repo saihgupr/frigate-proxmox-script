@@ -1,3 +1,9 @@
+## [1.1.0] - 2026-03-23
+
+### Added
+- Implemented first-class support for version 1.1.0 changes.
+- Consolidated latest performance improvements and bug fixes.
+
 ## [1.0.9] - 2026-03-22
 
 ### Added
