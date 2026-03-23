@@ -15,7 +15,7 @@ error_exit() {
     exit 1
 }
 
-echo -e "${GREEN}Frigate LXC Update Script${NC}"
+echo -e "${GREEN}Frigate Proxmox Update Script${NC}"
 echo "--------------------------"
 
 # Parse arguments

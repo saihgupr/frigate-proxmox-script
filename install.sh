@@ -1267,7 +1267,7 @@ main() {
     clear
     
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  FRIGATE NVR DOCKER INSTALLATION FOR PROXMOX VE"
+    echo -e "  ${CYAN}Frigate Proxmox Script${NC}"
     echo "  Version: $VERSION"
     echo "  Using Docker Compose (Fast & Reliable)"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
