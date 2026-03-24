@@ -1,8 +1,10 @@
-## [1.1.1] - 2026-03-23
+## [1.1.1-debug.2] - 2026-03-24
 
 ### Fixed
 - Resolved malformed `docker-compose.yml` generation when using NVIDIA and Coral PCIe simultaneously.
 - Made Proxmox snapshots non-fatal in both `install.sh` and `update.sh` to prevent script exit on storage-related failures.
+- Prevented empty `ffmpeg:` block in `config.yml` when no hardware acceleration is selected.
+- Added host-side driver validation for Coral PCIe devices with descriptive warnings and installation instructions.
 
 ## [1.1.0] - 2026-03-23
 

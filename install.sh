@@ -11,7 +11,7 @@ set -euo pipefail
 # GLOBAL VARIABLES
 # ============================================================================
 
-VERSION="1.1.1"
+VERSION="1.1.1-debug.2"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_FILE="/tmp/frigate-install-$(date +%Y%m%d-%H%M%S).log"
 DRY_RUN=false
@@ -251,9 +251,15 @@ check_hardware() {
     if lsusb 2>/dev/null | grep -Eqi "18d1:9302|Google Inc|Global Unichip Corp"; then
         DETECTED_CORAL="USB"
         log_success "Detected Google Coral (USB)"
-    elif lspci 2>/dev/null | grep -qi "Global Unichip Corp"; then
+    elif lspci 2>/dev/null | grep -qi "089a\|Global Unichip Corp"; then
         DETECTED_CORAL="PCIe"
         log_success "Detected Google Coral (PCIe)"
+        # Check for host driver (Gasket/EdgeTPU)
+        if [ ! -e "/dev/apex_0" ]; then
+            log_warn "Coral PCIe hardware seen but /dev/apex_0 not found on Proxmox host!"
+            log_warn "You likely need to install host drivers (gasket-dkms, libedgetpu1-std)"
+            log_warn "Visit: https://coral.ai/docs/pcie/install/"
+        fi
     fi
 }
 
@@ -1009,7 +1015,8 @@ create_frigate_config() {
     
     local hwaccel_config=""
     if [ "$ENABLE_IGPU" = "yes" ] && [ "$GPU_PRESET" != "none" ]; then
-        hwaccel_config="  hwaccel_args: $GPU_PRESET"
+        hwaccel_config="ffmpeg:
+  hwaccel_args: $GPU_PRESET"
     fi
 
     local go2rtc_config=""
@@ -1055,7 +1062,6 @@ mqtt:
 
 $go2rtc_config
 
-ffmpeg:
 $hwaccel_config
 
 $detector_config
