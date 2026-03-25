@@ -7,8 +7,8 @@ This script builds a production-ready Frigate stack from scratch: provisioning t
 ### What it does:
 ✅ **Full Stack Provisioning** - Creates a privileged LXC container with Docker and Compose pre-installed  
 ✅ **GPU Accelerated** - Configures Intel iGPU acceleration by default (VAAPI/QSV)  
-✅ **N95/N100 Optimized** - Tailored for the Beelink S12 (Intel N95/N100) and other Intel hosts  
-✅ **Zero Manual Setup** - Handles all the complex nesting, keyctl, and driver passthrough settings  
+✅ **Alder Lake-N Optimized** - Tailored for Intel N95, N100, and **N150** processors  
+✅ **Zero Manual Setup** - Handles all the complex nesting, keyctl, and driver passthrough settings
 
 ![](images/1.1.png)
 ![](images/2.1.png)
@@ -202,6 +202,23 @@ The script performs a "pre-flight" scan of your Proxmox host to determine the be
 3.  **Detector Optimization**:
     - If a **Google Coral (USB or PCIe)** is found, it's set as the primary detector.
     - If no Coral is found, it utilizes **OpenVINO** (favoring the iGPU if available, otherwise falling back to CPU).
+
+### Intel Alder Lake-N (N95/N100/N150)
+
+For newer Intel Alder Lake-N processors, ensure your Proxmox host is running **Kernel 6.5 or later** (standard in Proxmox 8.1+). 
+
+If the script fails to detect your iGPU on these chips:
+1. Ensure the `intel-media-va-driver-non-free` is available (the script attempts to install this).
+2. You may need to add `i915.force_probe=*` to your GRUB/systemd-boot entries on the **Proxmox host** if using an older kernel.
+
+### SR-IOV (Virtual GPUs)
+
+This script supports **SR-IOV**. If you have enabled SR-IOV on your Proxmox host to split your iGPU into multiple Virtual Functions (VFs):
+
+1. The script will detect multiple render nodes (e.g., `/dev/dri/renderD128`, `/dev/dri/renderD129`, etc.).
+2. You will be prompted to select which specific render node Frigate should use.
+3. The script will automatically map only that specific node to the Docker container.
+4. **Note**: Ensure you have the `intel-i915-dkms` drivers installed on your host for SR-IOV support on 12th Gen+ Intel hardware.
 
 ### Verify Hardware Acceleration
 

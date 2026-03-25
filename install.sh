@@ -11,7 +11,7 @@ set -euo pipefail
 # GLOBAL VARIABLES
 # ============================================================================
 
-VERSION="1.1.1-debug.2"
+VERSION="1.1.2"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_FILE="/tmp/frigate-install-$(date +%Y%m%d-%H%M%S).log"
 DRY_RUN=false
@@ -66,6 +66,8 @@ DETECTED_CPU=""
 DETECTED_GPU="none"
 GPU_TYPES_FOUND=() # Array to store all found GPU types (intel, amd, nvidia)
 SELECTED_GPU_TYPE="none"
+DETECTED_RENDER_NODES=() # Array to store found render nodes
+SELECTED_RENDER_NODE="/dev/dri/renderD128"
 DETECTED_CORAL="none"
 GPU_PRESET="preset-vaapi" # Default to VAAPI (Intel/AMD)
 
@@ -203,20 +205,27 @@ check_hardware() {
 
     # GPU Detection
     GPU_TYPES_FOUND=()
+    DETECTED_RENDER_NODES=()
     
-    # Check for Intel/AMD (VAAPI)
-    if [ -e "/dev/dri/renderD128" ]; then
-        if lspci 2>/dev/null | grep -qi "intel"; then
+    # Scan for render nodes
+    if [ -d "/dev/dri" ]; then
+        DETECTED_RENDER_NODES=($(ls /dev/dri/renderD* 2>/dev/null || true))
+    fi
+
+    if [ ${#DETECTED_RENDER_NODES[@]} -gt 0 ]; then
+        if lspci -nn 2>/dev/null | grep -qi "intel"; then
             GPU_TYPES_FOUND+=("intel")
-        elif lspci 2>/dev/null | grep -qi "amd"; then
+        fi
+        if lspci -nn 2>/dev/null | grep -qi "amd"; then
             GPU_TYPES_FOUND+=("amd")
-        else
+        fi
+        if [ ${#GPU_TYPES_FOUND[@]} -eq 0 ]; then
             GPU_TYPES_FOUND+=("vaapi")
         fi
     fi
 
     # Check for NVIDIA
-    if command -v nvidia-smi &>/dev/null || lspci 2>/dev/null | grep -qi "nvidia"; then
+    if command -v nvidia-smi &>/dev/null || lspci -nn 2>/dev/null | grep -qi "nvidia"; then
         GPU_TYPES_FOUND+=("nvidia")
     fi
     
@@ -233,15 +242,20 @@ check_hardware() {
         DETECTED_GPU="Multiple (${GPU_TYPES_FOUND[*]})"
     fi
     
-    # Verify driver existence on host for Intel
-    if [[ "$DETECTED_GPU" == *"Intel"* ]] && [ ! -d "/dev/dri" ]; then
-        log_warn "Intel GPU detected but /dev/dri not found! Check BIOS and host drivers."
-        DETECTED_GPU="none"
-        SELECTED_GPU_TYPE="none"
+    # Verify driver existence on host for Intel/AMD
+    if [[ "$SELECTED_GPU_TYPE" == "intel" || "$SELECTED_GPU_TYPE" == "amd" || "$SELECTED_GPU_TYPE" == "vaapi" ]]; then
+        if [ ${#DETECTED_RENDER_NODES[@]} -eq 0 ]; then
+            log_warn "GPU detected via lspci but no render nodes found in /dev/dri/! Check BIOS and host drivers."
+            DETECTED_GPU="none"
+            SELECTED_GPU_TYPE="none"
+        fi
     fi
     
     if [ "$DETECTED_GPU" != "none" ]; then
         log_success "Detected GPU: $DETECTED_GPU"
+        if [ ${#DETECTED_RENDER_NODES[@]} -gt 1 ]; then
+            log "Found ${#DETECTED_RENDER_NODES[@]} render nodes: ${DETECTED_RENDER_NODES[*]}"
+        fi
     else
         log_warn "No integrated or dedicated GPU detected for hardware acceleration."
         GPU_PRESET="none"
@@ -425,6 +439,27 @@ configure_container() {
         else
             ENABLE_IGPU="yes"
         fi
+    fi
+
+    # Handle multiple render nodes (SR-IOV)
+    if [ "$ENABLE_IGPU" = "yes" ] && [ ${#DETECTED_RENDER_NODES[@]} -gt 1 ]; then
+        echo ""
+        log_step "Multiple render nodes found (Possible SR-IOV). Select which one to use:"
+        options=()
+        for node in "${DETECTED_RENDER_NODES[@]}"; do
+            options+=("$node")
+        done
+        
+        select opt in "${options[@]}"; do
+            if [ -n "$opt" ]; then
+                SELECTED_RENDER_NODE="$opt"
+                log "Selected render node: $SELECTED_RENDER_NODE"
+                break
+            else
+                log_error "Invalid selection"
+            fi
+        done
+    fi
     else
         echo ""
         log_warn "Integrated GPU (iGPU) not detected for hardware-accelerated video decoding."
@@ -586,6 +621,9 @@ show_configuration_summary() {
     echo "Frigate Settings:"
     echo "  Docker Image:    ghcr.io/blakeblackshear/frigate:$FRIGATE_VERSION"
     echo "  HW Accel:        $ENABLE_IGPU ($DETECTED_GPU)"
+    if [ "$ENABLE_IGPU" = "yes" ] && [ "$SELECTED_GPU_TYPE" != "nvidia" ]; then
+        echo "  Render Node:     $SELECTED_RENDER_NODE"
+    fi
     echo "  Web Port:        $FRIGATE_PORT"
     echo "  go2rtc Port:     $GO2RTC_PORT"
     echo "  Auth Port:       $AUTH_PORT"
@@ -940,7 +978,7 @@ create_docker_compose() {
               count: 1
               capabilities: [gpu, video]"
         else
-            devices_list="      - /dev/dri/renderD128:/dev/dri/renderD128"
+            devices_list="      - $SELECTED_RENDER_NODE:$SELECTED_RENDER_NODE"
         fi
     fi
 

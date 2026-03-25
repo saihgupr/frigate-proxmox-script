@@ -1,3 +1,10 @@
+## [1.1.2] - 2026-03-25
+
+### Added
+- **Intel N150 (Alder Lake-N) Support**: Optimized hardware detection and path configuration for newer CPU families.
+- **SR-IOV Support**: The script now detects multiple render nodes and prompts the user to select the appropriate Virtual Function (VF).
+- Enhanced `lspci` validation with numeric IDs (`-nn`) for better hardware identification.
+
 ## [1.1.1-debug.2] - 2026-03-24
 
 ### Fixed
