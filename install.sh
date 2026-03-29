@@ -44,6 +44,7 @@ CT_GATEWAY=""
 CT_DNS="8.8.8.8"
 # Default (will be updated dynamically during install)
 DEBIAN_TEMPLATE="debian-12-standard_12.12-1_amd64.tar.zst"
+TEMPLATE_STORAGE="local"
 
 # Frigate Configuration
 FRIGATE_VERSION="stable"  # Docker tag: stable, beta, or specific version
@@ -639,7 +640,7 @@ download_debian_template() {
         log_warn "Could not discover Debian 12 template dynamically. Using fallback: $DEBIAN_TEMPLATE"
     fi
     
-    if pveam list local 2>/dev/null | grep -q "$DEBIAN_TEMPLATE"; then
+    if pveam list $TEMPLATE_STORAGE 2>/dev/null | grep -q "$DEBIAN_TEMPLATE"; then
         log_success "Debian template already available"
         return
     fi
@@ -647,10 +648,10 @@ download_debian_template() {
     log "Downloading $DEBIAN_TEMPLATE..."
     
     if [ "$DRY_RUN" = false ]; then
-        pveam download local "$DEBIAN_TEMPLATE" 2>&1 | tee -a "$LOG_FILE" || error_exit "Failed to download template"
+        pveam download $TEMPLATE_STORAGE "$DEBIAN_TEMPLATE" 2>&1 | tee -a "$LOG_FILE" || error_exit "Failed to download template"
         log_success "Debian template downloaded"
     else
-        log_dry_run "pveam download local $DEBIAN_TEMPLATE"
+        log_dry_run "pveam download $TEMPLATE_STORAGE $DEBIAN_TEMPLATE"
     fi
 }
 
@@ -664,7 +665,7 @@ create_lxc_container() {
         net_config="name=eth0,bridge=$CT_BRIDGE,ip=dhcp"
     fi
     
-    local pct_cmd="pct create $CT_ID local:vztmpl/$DEBIAN_TEMPLATE \
+    local pct_cmd="pct create $CT_ID $TEMPLATE_STORAGE:vztmpl/$DEBIAN_TEMPLATE \
         --hostname $CT_HOSTNAME \
         --cores $CT_CORES \
         --memory $CT_RAM \
