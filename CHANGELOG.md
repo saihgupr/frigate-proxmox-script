@@ -1,3 +1,8 @@
+## [1.1.5] - 2026-04-19
+
+### Fixed
+- **Network Storage Resilience (#28)**: Prevented script hangs on offline CIFS/NFS shares by implementing a 5-second timeout and proactive activity checking. Inactive storage pools are now automatically filtered out during discovery.
+
 ## [1.1.4] - 2026-04-19
 
 ### Fixed

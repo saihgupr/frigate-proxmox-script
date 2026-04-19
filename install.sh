@@ -11,7 +11,7 @@ set -euo pipefail
 # GLOBAL VARIABLES
 # ============================================================================
 
-VERSION="1.1.4"
+VERSION="1.1.5"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_FILE="/tmp/frigate-install-$(date +%Y%m%d-%H%M%S).log"
 DRY_RUN=false
@@ -112,9 +112,35 @@ execute() {
 }
 
 # Detect storage pools by content type (e.g., images, vztmpl)
+# Check if storage is active with a timeout to prevent hanging on offline CIFS/NFS
+is_storage_active() {
+    local storage=$1
+    if ! command -v timeout &>/dev/null; then
+        # Fallback if timeout command is missing
+        pvesm status -storage "$storage" 2>/dev/null | awk 'NR>1 {print $3}' | grep -q "active"
+        return $?
+    fi
+    
+    if ! timeout 5 pvesm status -storage "$storage" &>/dev/null; then
+        return 1
+    fi
+    pvesm status -storage "$storage" 2>/dev/null | awk 'NR>1 {print $3}' | grep -q "active"
+}
+
+# Detect storage pools by content type (e.g., images, vztmpl)
 get_storage_pools() {
     local content_type=$1
-    pvesm status -content "$content_type" 2>/dev/null | awk 'NR>1 {print $1}'
+    local pools=()
+    
+    # Get initial list
+    local raw_pools
+    raw_pools=$(pvesm status -content "$content_type" 2>/dev/null | awk 'NR>1 {print $1}')
+    
+    for p in $raw_pools; do
+        if is_storage_active "$p"; then
+            echo "$p"
+        fi
+    done
 }
 
 # Helper for interactive storage selection
@@ -229,6 +255,11 @@ check_root() {
 check_resources() {
     log_step "Checking available resources on storage pool: $CT_STORAGE..."
     
+    if ! is_storage_active "$CT_STORAGE"; then
+        log_warn "Storage pool '$CT_STORAGE' is currently inactive or unreachable. skipping space check."
+        return
+    fi
+
     local storage_info
     storage_info=$(pvesm status -storage "$CT_STORAGE" 2>/dev/null | tail -1)
     
