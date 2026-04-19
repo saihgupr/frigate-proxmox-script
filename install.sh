@@ -11,7 +11,7 @@ set -euo pipefail
 # GLOBAL VARIABLES
 # ============================================================================
 
-VERSION="1.1.2"
+VERSION="1.1.4"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_FILE="/tmp/frigate-install-$(date +%Y%m%d-%H%M%S).log"
 DRY_RUN=false
@@ -226,8 +226,12 @@ check_hardware() {
     fi
 
     # Check for NVIDIA
-    if command -v nvidia-smi &>/dev/null || lspci -nn 2>/dev/null | grep -qi "nvidia"; then
+    if lspci -nn 2>/dev/null | grep -qi "nvidia"; then
         GPU_TYPES_FOUND+=("nvidia")
+        if ! command -v nvidia-smi &>/dev/null; then
+            log_warn "NVIDIA GPU hardware detected, but 'nvidia-smi' not found on host!"
+            log_warn "Ensure the NVIDIA driver is installed on Proxmox host for passthrough to work."
+        fi
     fi
     
     # Set initial DETECTED_GPU based on priority if only one found
@@ -791,6 +795,7 @@ configure_nvidia_passthrough() {
     local lxc_conf="/etc/pve/lxc/${CT_ID}.conf"
     
     if [ "$DRY_RUN" = false ]; then
+        # Device Nodes
         if ! grep -q "nvidia" "$lxc_conf"; then
             cat >> "$lxc_conf" << EOF
 
@@ -804,12 +809,43 @@ lxc.mount.entry: /dev/nvidia-modeset dev/nvidia-modeset none bind,optional,creat
 lxc.mount.entry: /dev/nvidia-uvm dev/nvidia-uvm none bind,optional,create=file
 lxc.mount.entry: /dev/nvidia-uvm-tools dev/nvidia-uvm-tools none bind,optional,create=file
 EOF
-            log_success "NVIDIA GPU passthrough configured in $lxc_conf"
-        else
-            log "NVIDIA GPU passthrough already configured in $lxc_conf"
+            log_success "NVIDIA GPU device nodes configured in $lxc_conf"
         fi
+
+        # Library Mapping (Resilience for Issue #30)
+        log "Mapping NVIDIA libraries to container..."
+        local lib_list=(
+            "libnvidia-ml.so.1"
+            "libcuda.so.1"
+            "libnvidia-ptxjitcompiler.so.1"
+            "libnvidia-allocator.so.1"
+            "libnvidia-cfg.so.1"
+            "libnvidia-encode.so.1"
+            "libnvidia-decode.so.1"
+            "libnvcuvid.so.1"
+        )
+        
+        for lib_name in "${lib_list[@]}"; do
+            # Find absolute path on host
+            local host_path=""
+            host_path=$(ldconfig -p | grep "$lib_name" | awk 'NR==1 {print $NF}')
+            
+            # Fallback to standard path if ldconfig fails
+            if [ -z "$host_path" ] && [ -f "/usr/lib/x86_64-linux-gnu/$lib_name" ]; then
+                host_path="/usr/lib/x86_64-linux-gnu/$lib_name"
+            fi
+            
+            if [ -n "$host_path" ] && [ -f "$host_path" ]; then
+                # Bind mount into container at the same path
+                local target_path="${host_path#/}"
+                if ! grep -q "$host_path" "$lxc_conf"; then
+                    echo "lxc.mount.entry: $host_path $target_path none bind,optional,create=file" >> "$lxc_conf"
+                    log "  Mapped $lib_name"
+                fi
+            fi
+        done
     else
-        log_dry_run "Add NVIDIA GPU passthrough configuration to $lxc_conf"
+        log_dry_run "Add NVIDIA GPU passthrough and library mapping to $lxc_conf"
     fi
 }
 
