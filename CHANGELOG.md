@@ -1,3 +1,45 @@
+## [1.2.0] - 2026-04-20
+
+### Added
+- **Custom Network Bridge (#31)**: Added support for specifying the network bridge (e.g., `vmbr1`) during installation via a hidden `--bridge <name>` command-line flag. This allows advanced users to configure their specific network bridge without changing the interactive setup for standard users.
+- **VLAN Awareness (#29)**: Added support for specifying a VLAN tag during installation via a hidden `--vlan <tag>` command-line flag.
+
+## [1.1.9] - 2026-04-19
+
+### Added
+- **VLAN Awareness (#29)**: Added support for specifying a VLAN tag during installation via a hidden `--vlan <tag>` command-line flag. This allows advanced users to isolate the container at the network level without cluttering the interactive setup for standard users.
+
+## [1.1.8] - 2026-04-19
+
+### Added
+- **Auto-reboot LXC (#29)**: Added a smart prompt at the end of the installation to automatically reboot the container if hardware passthrough (GPU/Coral) was configured, ensuring devices initialize correctly.
+
+## [1.1.7] - 2026-04-19
+
+### Changed
+- **Docker Compose v2 Standardization (#25)**: Modernized the installation by renaming `docker-compose.yml` to `compose.yml` and updating all commands and log messages to use the `docker compose` syntax.
+
+## [1.1.6] - 2026-04-19
+
+### Fixed
+- **Coral USB 3.0 Detection (#19)**: Enhanced hardware discovery with expanded Vendor/Product ID matching. Added proactive USB bus speed validation to warn users if their Coral is running at throttled (USB 2.0) speeds.
+
+## [1.1.5] - 2026-04-19
+
+### Fixed
+- **Network Storage Resilience (#28)**: Prevented script hangs on offline CIFS/NFS shares by implementing a 5-second timeout and proactive activity checking. Inactive storage pools are now automatically filtered out during discovery.
+
+## [1.1.4] - 2026-04-19
+
+### Fixed
+- **NVIDIA Library Mapping (#30)**: Resolved `libnvidia-ml.so.1` missing errors by implementing dynamic host library discovery and bind-mounting. The script now automatically identifies and maps essential NVIDIA libraries into the LXC container.
+- **Host Driver Validation**: Added proactive checks to verify NVIDIA driver installation on the Proxmox host before allowing passthrough configuration.
+
+## [1.1.3] - 2026-04-19
+
+### Fixed
+- **Storage Resilience (#26)**: Replaced hardcoded `local-lvm` references with dynamic storage discovery. The script now queries available pools and provides a robust interactive selection with intelligent fallbacks (LVM -> ZFS -> Local).
+- **Template Storage Selection**: Added interactive selection for the template storage pool, allowing users with custom storage setups to specify where Debian images are stored.
 ## [1.1.2] - 2026-04-19
 
 ### Added

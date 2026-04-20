@@ -58,6 +58,15 @@ OPTIONS:
     --dry-run       Run in simulation mode (no actual changes)
     --verbose       Enable verbose output
     --help          Show help message
+
+### Advanced Options
+
+These options allow for automated or specialized network configurations:
+
+| Flag | Description |
+| :--- | :--- |
+| `--bridge NAME` | Specify the network bridge (default: `vmbr0`) |
+| `--vlan TAG` | Specify a VLAN tag for the container network |
 ```
 
 <details>
