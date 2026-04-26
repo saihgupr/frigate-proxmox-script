@@ -304,33 +304,40 @@ check_hardware() {
     GPU_TYPES_FOUND=()
     DETECTED_RENDER_NODES=()
     
-    # Scan for render nodes
+    # 1. PCI Hardware Detection (Physical presence)
+    local pci_output
+    pci_output=$(lspci -nn 2>/dev/null || true)
+    
+    if echo "$pci_output" | grep -qi "intel"; then
+        GPU_TYPES_FOUND+=("intel")
+    fi
+    if echo "$pci_output" | grep -qi "amd"; then
+        GPU_TYPES_FOUND+=("amd")
+    fi
+    if echo "$pci_output" | grep -qi "nvidia"; then
+        GPU_TYPES_FOUND+=("nvidia")
+    fi
+
+    # 2. Device Node Detection (Driver status)
     if [ -d "/dev/dri" ]; then
         DETECTED_RENDER_NODES=($(ls /dev/dri/renderD* 2>/dev/null || true))
     fi
 
-    if [ ${#DETECTED_RENDER_NODES[@]} -gt 0 ]; then
-        if lspci -nn 2>/dev/null | grep -qi "intel"; then
-            GPU_TYPES_FOUND+=("intel")
-        fi
-        if lspci -nn 2>/dev/null | grep -qi "amd"; then
-            GPU_TYPES_FOUND+=("amd")
-        fi
-        if [ ${#GPU_TYPES_FOUND[@]} -eq 0 ]; then
-            GPU_TYPES_FOUND+=("vaapi")
-        fi
+    # 3. Logic for selection and warnings
+    if [ ${#GPU_TYPES_FOUND[@]} -eq 0 ] && [ ${#DETECTED_RENDER_NODES[@]} -gt 0 ]; then
+        # Render nodes exist but didn't match intel/amd/nvidia - likely generic VAAPI
+        GPU_TYPES_FOUND+=("vaapi")
     fi
 
-    # Check for NVIDIA
-    if lspci -nn 2>/dev/null | grep -qi "nvidia"; then
-        GPU_TYPES_FOUND+=("nvidia")
+    # Check for NVIDIA tools if hardware found
+    if [[ " ${GPU_TYPES_FOUND[*]} " == *" nvidia "* ]]; then
         if ! command -v nvidia-smi &>/dev/null; then
             log_warn "NVIDIA GPU hardware detected, but 'nvidia-smi' not found on host!"
             log_warn "Ensure the NVIDIA driver is installed on Proxmox host for passthrough to work."
         fi
     fi
     
-    # Set initial DETECTED_GPU based on priority if only one found
+    # Set initial DETECTED_GPU based on priority
     if [ ${#GPU_TYPES_FOUND[@]} -eq 1 ]; then
         SELECTED_GPU_TYPE="${GPU_TYPES_FOUND[0]}"
         case "$SELECTED_GPU_TYPE" in
@@ -341,12 +348,15 @@ check_hardware() {
         esac
     elif [ ${#GPU_TYPES_FOUND[@]} -gt 1 ]; then
         DETECTED_GPU="Multiple (${GPU_TYPES_FOUND[*]})"
+        # We'll let the user select later
     fi
     
-    # Verify driver existence on host for Intel/AMD
+    # Verify driver existence on host for Intel/AMD/VAAPI
     if [[ "$SELECTED_GPU_TYPE" == "intel" || "$SELECTED_GPU_TYPE" == "amd" || "$SELECTED_GPU_TYPE" == "vaapi" ]]; then
         if [ ${#DETECTED_RENDER_NODES[@]} -eq 0 ]; then
-            log_warn "GPU detected via lspci but no render nodes found in /dev/dri/! Check BIOS and host drivers."
+            log_warn "GPU detected via lspci but no render nodes found in /dev/dri/!"
+            log_warn "This usually means the host drivers are not loaded."
+            log_warn "Try: apt-get install -y intel-media-va-driver-non-free (for Intel)"
             DETECTED_GPU="none"
             SELECTED_GPU_TYPE="none"
         fi
