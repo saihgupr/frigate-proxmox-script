@@ -1,3 +1,10 @@
+## [1.2.1] - 2026-04-29
+
+### Fixed
+- **Storage Pool Detection (#26, #34)**: Resolved "stops without a notice" issues by moving disk space checks after storage selection and making them more robust.
+- **Dynamic Defaults**: Improved storage pool fallback heuristics to better detect ZFS and other non-LVM storage setups.
+- **Improved Robustness**: Enhanced `is_storage_active` and `check_resources` to handle empty or inactive storage pools gracefully without crashing under `set -e`.
+
 ## [1.2.0] - 2026-04-20
 
 ### Added

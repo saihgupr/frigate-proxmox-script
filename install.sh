@@ -11,7 +11,7 @@ set -euo pipefail
 # GLOBAL VARIABLES
 # ============================================================================
 
-VERSION="1.2.0"
+VERSION="1.2.1"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_FILE="/tmp/frigate-install-$(date +%Y%m%d-%H%M%S).log"
@@ -119,16 +119,22 @@ execute() {
 # Check if storage is active with a timeout to prevent hanging on offline CIFS/NFS
 is_storage_active() {
     local storage=$1
-    if ! command -v timeout &>/dev/null; then
-        # Fallback if timeout command is missing
-        pvesm status -storage "$storage" 2>/dev/null | awk 'NR>1 {print $3}' | grep -q "active"
-        return $?
-    fi
-    
-    if ! timeout 5 pvesm status -storage "$storage" &>/dev/null; then
+    if [ -z "$storage" ]; then
         return 1
     fi
-    pvesm status -storage "$storage" 2>/dev/null | awk 'NR>1 {print $3}' | grep -q "active"
+
+    # Use a subshell to isolate any pipe failures if pipefail is on
+    local active=1
+    if command -v timeout &>/dev/null; then
+        if timeout 5 pvesm status -storage "$storage" 2>/dev/null | grep -q "active"; then
+            active=0
+        fi
+    else
+        if pvesm status -storage "$storage" 2>/dev/null | grep -q "active"; then
+            active=0
+        fi
+    fi
+    return $active
 }
 
 # Detect storage pools by content type (e.g., images, vztmpl)
@@ -172,12 +178,25 @@ select_storage_pool() {
     
     # Fallback default heuristics
     if [ -z "$default_index" ]; then
+        # 1. Look for common VM/Image storage names
         for i in "${!pools[@]}"; do
-            if [[ "${pools[$i]}" == "local-lvm" || "${pools[$i]}" == "local" ]]; then
+            if [[ "${pools[$i]}" =~ local-lvm|local-zfs|zfspool|data|storage|pve-storage ]]; then
                 default_index=$((i+1))
                 break
             fi
         done
+        
+        # 2. If still no match, look for 'local'
+        if [ -z "$default_index" ]; then
+            for i in "${!pools[@]}"; do
+                if [[ "${pools[$i]}" == "local" ]]; then
+                    default_index=$((i+1))
+                    break
+                fi
+            done
+        fi
+        
+        # 3. Final fallback: first available pool
         [ -z "$default_index" ] && default_index=1
     fi
 
@@ -257,27 +276,42 @@ check_root() {
 }
 
 check_resources() {
+    if [ -z "$CT_STORAGE" ]; then
+        return
+    fi
+    
     log_step "Checking available resources on storage pool: $CT_STORAGE..."
     
     if ! is_storage_active "$CT_STORAGE"; then
-        log_warn "Storage pool '$CT_STORAGE' is currently inactive or unreachable. skipping space check."
+        log_warn "Storage pool '$CT_STORAGE' is currently inactive or unreachable. Skipping space check."
         return
     fi
 
+    # Use a more robust way to get storage info that doesn't crash with set -e
     local storage_info
-    storage_info=$(pvesm status -storage "$CT_STORAGE" 2>/dev/null | tail -1)
+    storage_info=$(pvesm status -storage "$CT_STORAGE" 2>/dev/null | awk 'NR>1 {print $0}' || true)
     
     if [ -z "$storage_info" ]; then
         log_warn "Could not retrieve status for storage pool '$CT_STORAGE'. Skipping specific space check."
         return
     fi
     
+    # Example pvesm status output:
+    # Name             Type     Status           Total            Used            Available        %
+    # local-lvm        lvmthin  active           93782016         12345678        81436338         13.16%
+
     local total used avail pct
-    total=$(echo "$storage_info" | awk '{print $4}')
-    used=$(echo "$storage_info" | awk '{print $5}')
-    avail=$(echo "$storage_info" | awk '{print $6}')
-    pct=$(echo "$storage_info" | awk '{print $7}' | tr -d '%')
+    # Use awk to safely extract fields
+    total=$(echo "$storage_info" | awk '{print $4}' || echo "0")
+    used=$(echo "$storage_info" | awk '{print $5}' || echo "0")
+    avail=$(echo "$storage_info" | awk '{print $6}' || echo "0")
+    pct=$(echo "$storage_info" | awk '{print $7}' | tr -d '%' || echo "0")
     
+    if [[ ! "$avail" =~ ^[0-9]+$ ]]; then
+        log_warn "Could not parse available space for '$CT_STORAGE'. Skipping check."
+        return
+    fi
+
     local avail_gb=$((avail / 1024 / 1024))
     
     if [ "$avail_gb" -lt 10 ]; then
@@ -1494,11 +1528,11 @@ main() {
     # Pre-flight checks
     check_proxmox
     check_root
-    check_resources
     check_hardware
     
     # Configuration
     configure_container
+    check_resources
     show_configuration_summary
     
     # Installation
