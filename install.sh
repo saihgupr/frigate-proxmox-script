@@ -328,9 +328,9 @@ check_hardware() {
     
     # CPU Detection
     if command -v lscpu &>/dev/null; then
-        DETECTED_CPU=$(lscpu | grep "Model name" | cut -d: -f2 | xargs)
+        DETECTED_CPU=$(lscpu | grep "Model name" | cut -d: -f2 | xargs || echo "Unknown")
     else
-        DETECTED_CPU=$(grep -m1 "model name" /proc/cpuinfo | cut -d: -f2 | xargs)
+        DETECTED_CPU=$(grep -m1 "model name" /proc/cpuinfo | cut -d: -f2 | xargs || echo "Unknown")
     fi
     log "CPU: $DETECTED_CPU"
 
@@ -398,7 +398,7 @@ check_hardware() {
 
     # Coral Detection
     local coral_usb_info
-    coral_usb_info=$(lsusb 2>/dev/null | grep -Ei "18d1:9302|1a6e:089a|Google Inc|Global Unichip Corp" | head -n 1)
+    coral_usb_info=$(lsusb 2>/dev/null | grep -Ei "18d1:9302|1a6e:089a|Google Inc|Global Unichip Corp" | head -n 1 || echo "")
 
     if [ -n "$coral_usb_info" ]; then
         DETECTED_CORAL="USB"
@@ -407,7 +407,7 @@ check_hardware() {
         # Speed Detection (Issue #19)
         local dev_num=$(echo "$coral_usb_info" | awk '{print $4}' | sed 's/://')
         local speed
-        speed=$(lsusb -t 2>/dev/null | grep "Dev $dev_num" | grep -o "[0-9]\+M" | head -n 1)
+        speed=$(lsusb -t 2>/dev/null | grep "Dev $dev_num" | grep -o "[0-9]\+M" | head -n 1 || echo "Unknown")
         
         if [ "$speed" = "480M" ]; then
             log_warn "Coral USB is running at 480Mbps (USB 2.0). Performance may be throttled!"
@@ -940,22 +940,49 @@ EOF
         )
         
         for lib_name in "${lib_list[@]}"; do
-            # Find absolute path on host
-            local host_path=""
-            host_path=$(ldconfig -p | grep "$lib_name" | awk 'NR==1 {print $NF}')
-            
-            # Fallback to standard path if ldconfig fails
-            if [ -z "$host_path" ] && [ -f "/usr/lib/x86_64-linux-gnu/$lib_name" ]; then
-                host_path="/usr/lib/x86_64-linux-gnu/$lib_name"
-            fi
-            
-            if [ -n "$host_path" ] && [ -f "$host_path" ]; then
-                # Bind mount into container at the same path
-                local target_path="${host_path#/}"
-                if ! grep -q "$host_path" "$lxc_conf"; then
-                    echo "lxc.mount.entry: $host_path $target_path none bind,optional,create=file" >> "$lxc_conf"
-                    log "  Mapped $lib_name"
+            # Find all potential paths on host (Resilience for Issue #30)
+            local host_paths=()
+            # 1. Check ldconfig
+            local ld_paths
+            ld_paths=$(ldconfig -p | grep "$lib_name" | awk '{print $NF}' || true)
+            for lp in $ld_paths; do
+                host_paths+=("$lp")
+            done
+            # 2. Check standard paths
+            for p in "/usr/lib/x86_64-linux-gnu" "/usr/lib" "/lib/x86_64-linux-gnu"; do
+                if [ -f "$p/$lib_name" ]; then
+                    host_paths+=("$p/$lib_name")
                 fi
+            done
+            
+            # Remove duplicates and process each found path
+            if [ ${#host_paths[@]} -gt 0 ]; then
+                local unique_paths
+                unique_paths=$(echo "${host_paths[@]}" | tr ' ' '\n' | sort -u || true)
+                
+                for host_path in $unique_paths; do
+                    if [ -f "$host_path" ]; then
+                        # Resolve symlink to get the real file
+                        local real_path
+                        real_path=$(readlink -f "$host_path")
+                        
+                        # Bind mount the path
+                        local target_path="${host_path#/}"
+                        if ! grep -q "$host_path" "$lxc_conf"; then
+                            echo "lxc.mount.entry: $host_path $target_path none bind,optional,create=file" >> "$lxc_conf"
+                            log "  Mapped $host_path"
+                        fi
+                        
+                        # Also bind mount the real file if it's different (Resilience for Issue #30)
+                        if [ "$real_path" != "$host_path" ] && [ -f "$real_path" ]; then
+                            local real_target_path="${real_path#/}"
+                            if ! grep -q "$real_path" "$lxc_conf"; then
+                                echo "lxc.mount.entry: $real_path $real_target_path none bind,optional,create=file" >> "$lxc_conf"
+                                log "  Mapped target: $(basename "$real_path")"
+                            fi
+                        fi
+                    fi
+                done
             fi
         done
         REBOOT_REQUIRED=true
@@ -1072,6 +1099,11 @@ start_container() {
         done
         
         log_success "Container $CT_ID is running"
+        
+        if [ "$SELECTED_GPU_TYPE" = "nvidia" ]; then
+            log "Updating library cache inside container..."
+            pct exec "$CT_ID" -- ldconfig || log_warn "Failed to run ldconfig inside container."
+        fi
     else
         log_dry_run "pct start $CT_ID"
     fi
