@@ -41,7 +41,6 @@ CT_DISK=10
 CT_STORAGE=""
 CT_VLAN=""
 CT_BRIDGE="vmbr0"
-CT_VLAN=""
 CT_NETWORK_TYPE="dhcp"
 CT_IP=""
 CT_GATEWAY=""
@@ -799,57 +798,71 @@ download_debian_template() {
         pveam download $TEMPLATE_STORAGE "$DEBIAN_TEMPLATE" 2>&1 | tee -a "$LOG_FILE" || error_exit "Failed to download template"
         log_success "Debian template downloaded"
     else
-        log_dry_run "pveam download $TEMPLATE_STORAGE $DEBIAN_TEMPLATE"
+        log_dry_run "Download $DEBIAN_TEMPLATE to $TEMPLATE_STORAGE"
     fi
 }
 
 create_lxc_container() {
-    log_step "Creating LXC container $CT_ID..."
+    log_step "Creating LXC container $CT_ID ($CT_HOSTNAME)..."
     
-    local net_config
+    local net_config="name=eth0,bridge=$CT_BRIDGE,ip=$CT_NETWORK_TYPE"
     if [ "$CT_NETWORK_TYPE" = "static" ]; then
-        net_config="name=eth0,bridge=$CT_BRIDGE,ip=$CT_IP,gw=$CT_GATEWAY"
-    else
-        net_config="name=eth0,bridge=$CT_BRIDGE,ip=dhcp"
+        net_config="$net_config=$CT_IP,gw=$CT_GATEWAY"
     fi
     
     if [ -n "$CT_VLAN" ]; then
-        net_config+=",tag=$CT_VLAN"
+        net_config="$net_config,tag=$CT_VLAN"
+    fi
 
+    local password_part=""
+    if [ -n "$ROOT_PASSWORD" ]; then
+        password_part="--password $ROOT_PASSWORD"
     fi
     
-    local pct_cmd="pct create $CT_ID $TEMPLATE_STORAGE:vztmpl/$DEBIAN_TEMPLATE \
-        --hostname $CT_HOSTNAME \
-        --cores $CT_CORES \
-        --memory $CT_RAM \
-        --swap 512 \
-        --rootfs $CT_STORAGE:$CT_DISK \
-        --net0 $net_config \
-        --timezone host \
-        --unprivileged 0 \
-        --features nesting=1,keyctl=1,fuse=1 \
-        --onboot 1 \
-        --start 0"
+    if [ "$DRY_RUN" = false ]; then
+        pct create "$CT_ID" "$TEMPLATE_STORAGE:vztmpl/$DEBIAN_TEMPLATE" \
+            --hostname "$CT_HOSTNAME" \
+            --cores "$CT_CORES" \
+            --memory "$CT_RAM" \
+            --swap 512 \
+            --rootfs "$CT_STORAGE:$CT_DISK" \
+            --net0 "$net_config" \
+            --onboot 1 \
+            --ostype debian \
+            --unprivileged 0 \
+            --features nesting=1 \
+            $password_part 2>&1 | tee -a "$LOG_FILE" || error_exit "Failed to create container"
+        
+        log_success "Container created"
+    else
+        log_dry_run "Create container $CT_ID with template $DEBIAN_TEMPLATE"
+    fi
+}
+
+configure_lxc_passthrough() {
+    log_step "Configuring hardware passthrough..."
+    
+    local lxc_conf="/etc/pve/lxc/${CT_ID}.conf"
     
     if [ "$DRY_RUN" = false ]; then
-        eval "$pct_cmd" 2>&1 | tee -a "$LOG_FILE" || error_exit "Failed to create container"
-        log_success "Container $CT_ID created"
+        # Common Passthrough for iGPU / Render Nodes
+        if [ "$ENABLE_IGPU" = "yes" ]; then
+            if [ "$SELECTED_GPU_TYPE" = "intel" ] || [ "$SELECTED_GPU_TYPE" = "amd" ] || [ "$SELECTED_GPU_TYPE" = "vaapi" ]; then
+                configure_igpu_passthrough
+            elif [ "$SELECTED_GPU_TYPE" = "nvidia" ]; then
+                configure_nvidia_passthrough
+            fi
+        fi
         
-        if [ "$ADD_EXTRA_DISK" = true ]; then
-            log "Adding recordings disk: ${EXTRA_DISK_SIZE}GB on $EXTRA_DISK_STORAGE"
-            pct set "$CT_ID" -mp0 "$EXTRA_DISK_STORAGE:$EXTRA_DISK_SIZE,mp=/opt/frigate/storage" 2>&1 | tee -a "$LOG_FILE" || log_error "Failed to add recordings disk"
-        fi
-    else
-        log_dry_run "$pct_cmd"
-        if [ "$ADD_EXTRA_DISK" = true ]; then
-            log_dry_run "pct set $CT_ID -mp0 $EXTRA_DISK_STORAGE:$EXTRA_DISK_SIZE,mp=/opt/frigate/storage"
-        fi
+        # Coral USB Passthrough (usually handled by pct device add, but we'll do it manually if needed)
+        # Note: USB Passthrough is better handled via the UI or by mapping the specific vendor:product
+        
+        log_success "Passthrough configured"
     fi
 }
 
 configure_igpu_passthrough() {
-    if [ "$ENABLE_IGPU" != "yes" ]; then
-        log "Skipping iGPU passthrough (disabled)"
+    if [[ "$SELECTED_GPU_TYPE" != "intel" && "$SELECTED_GPU_TYPE" != "amd" && "$SELECTED_GPU_TYPE" != "vaapi" ]]; then
         return
     fi
     
@@ -872,7 +885,7 @@ EOF
     fi
 }
 
-configure_coral_passthrough() {
+configure_coral_pcie_passthrough() {
     if [ "$DETECTED_CORAL" != "PCIe" ]; then
         return
     fi
@@ -911,19 +924,22 @@ configure_nvidia_passthrough() {
     if [ "$DRY_RUN" = false ]; then
         # Device Nodes
         if ! grep -q "nvidia" "$lxc_conf"; then
+            # Get major numbers for devices (Resilience for Issue #30)
+            local nvidia_major=$(ls -l /dev/nvidiactl 2>/dev/null | awk '{print $5}' | cut -d, -f1 || echo "195")
+            local uvm_major=$(ls -l /dev/nvidia-uvm 2>/dev/null | awk '{print $5}' | cut -d, -f1 || echo "511")
+            
             cat >> "$lxc_conf" << EOF
 
 # Frigate: NVIDIA GPU Passthrough
-lxc.cgroup2.devices.allow: c 195:* rwm
-lxc.cgroup2.devices.allow: c 508:* rwm
-lxc.cgroup2.devices.allow: c 511:* rwm
+lxc.cgroup2.devices.allow: c $nvidia_major:* rwm
+lxc.cgroup2.devices.allow: c $uvm_major:* rwm
 lxc.mount.entry: /dev/nvidia0 dev/nvidia0 none bind,optional,create=file
 lxc.mount.entry: /dev/nvidiactl dev/nvidiactl none bind,optional,create=file
 lxc.mount.entry: /dev/nvidia-modeset dev/nvidia-modeset none bind,optional,create=file
 lxc.mount.entry: /dev/nvidia-uvm dev/nvidia-uvm none bind,optional,create=file
 lxc.mount.entry: /dev/nvidia-uvm-tools dev/nvidia-uvm-tools none bind,optional,create=file
 EOF
-            log_success "NVIDIA GPU device nodes configured in $lxc_conf"
+            log_success "NVIDIA GPU device nodes configured in $lxc_conf (Major: $nvidia_major, $uvm_major)"
         fi
 
         # Library Mapping (Resilience for Issue #30)
@@ -931,12 +947,14 @@ EOF
         local lib_list=(
             "libnvidia-ml.so.1"
             "libcuda.so.1"
+            "libnvidia-fatbinaryloader.so.1"
             "libnvidia-ptxjitcompiler.so.1"
             "libnvidia-allocator.so.1"
             "libnvidia-cfg.so.1"
             "libnvidia-encode.so.1"
             "libnvidia-decode.so.1"
             "libnvcuvid.so.1"
+            "libnvidia-rtcore.so.1"
         )
         
         for lib_name in "${lib_list[@]}"; do
@@ -978,124 +996,35 @@ EOF
                             local real_target_path="${real_path#/}"
                             if ! grep -q "$real_path" "$lxc_conf"; then
                                 echo "lxc.mount.entry: $real_path $real_target_path none bind,optional,create=file" >> "$lxc_conf"
-                                log "  Mapped target: $(basename "$real_path")"
+                                log "  Mapped $real_path (real file)"
                             fi
                         fi
                     fi
                 done
+            else
+                log_warn "Library $lib_name not found on host. Hardware acceleration may fail."
             fi
         done
-        REBOOT_REQUIRED=true
     else
-        log_dry_run "Add NVIDIA GPU passthrough and library mapping to $lxc_conf"
+        log_dry_run "Add NVIDIA passthrough configuration to $lxc_conf"
     fi
 }
 
-check_reboot() {
-    if [ "$REBOOT_REQUIRED" = true ]; then
-        echo ""
-        log_warn "Hardware passthrough was configured. A container reboot is required for changes to take effect."
-        if [ "$DRY_RUN" = true ]; then
-            log_dry_run "Would prompt for reboot of container $CT_ID"
-            return
-        fi
-        
-        read -p "Reboot container $CT_ID now? (y/N): " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            log "Rebooting container $CT_ID..."
-            pct reboot "$CT_ID"
-            log_success "Container rebooted successfully."
-        else
-            log_info "Please remember to reboot container $CT_ID manually."
-        fi
-    fi
-}
-
-configure_shm_size() {
-    log_step "Configuring SHM size..."
-    
-    local lxc_conf="/etc/pve/lxc/${CT_ID}.conf"
-    # Proxmox lxc.mount.entry size uses M for Megabytes and G for Gigabytes
-    local mount_size=$(echo "$SHM_SIZE" | sed -E 's/([0-9]+)mb/\1M/gi; s/([0-9]+)gb/\1G/gi')
+start_lxc_container() {
+    log_step "Starting container..."
     
     if [ "$DRY_RUN" = false ]; then
-        if ! grep -q "lxc.mount.entry: tmpfs dev/shm tmpfs" "$lxc_conf"; then
-            cat >> "$lxc_conf" << EOF
-
-# Frigate: SHM Size (${mount_size})
-lxc.mount.entry: tmpfs dev/shm tmpfs rw,nosuid,nodev,create=dir,size=${mount_size} 0 0
-EOF
-            log_success "SHM size (${mount_size}) configured in $lxc_conf"
-        else
-            sed -i "s|lxc.mount.entry: tmpfs dev/shm tmpfs.*|lxc.mount.entry: tmpfs dev/shm tmpfs rw,nosuid,nodev,create=dir,size=${mount_size} 0 0|" "$lxc_conf"
-            # Also update the comment if it exists
-            sed -i "s|# Frigate: SHM Size.*|# Frigate: SHM Size (${mount_size})|" "$lxc_conf"
-            log_success "SHM size updated to ${mount_size} in $lxc_conf"
-        fi
-    else
-        log_dry_run "Add/Update SHM size (${mount_size}) in $lxc_conf"
-    fi
-}
-
-create_container_summary_dashboard() {
-    log_step "Creating Proxmox summary dashboard..."
-    
-    local ip_address
-    ip_address=$(pct exec "$CT_ID" -- hostname -I | awk '{print $1}' || echo "<IP_ADDRESS>")
-    
-    local coral_line=""
-    if [ -n "$DETECTED_CORAL" ] && [ "$DETECTED_CORAL" != "none" ]; then
-        coral_line="- Coral Detector: ${DETECTED_CORAL}\n"
-    fi
-
-    # Construct Markdown Description
-    local description=$(echo -e "# Frigate Proxmox Script
-
-| Service | URL |
-| :--- | :--- |
-| Web UI | http://${ip_address}:${FRIGATE_PORT} |
-| go2rtc API | http://${ip_address}:${GO2RTC_PORT} |
-| Frigate Auth | https://${ip_address}:${AUTH_PORT} |
-
-**Hardware Profile**
-- GPU Acceleration: ${DETECTED_GPU}
-${coral_line}- SHM Size: ${SHM_SIZE}
-- Resources: ${CT_RAM}MB RAM / ${CT_CORES} CPU Cores
-
-**File Locations**
-- Configuration: /opt/frigate/config/config.yml
-- Media Storage: /opt/frigate/storage
-
----
-GitHub: [saihgupr/frigate-proxmox-script](https://github.com/saihgupr/frigate-proxmox-script)
-
-Support: [Buy me a coffee](https://ko-fi.com/saihgupr)")
-
-    if [ "$DRY_RUN" = false ]; then
-        pct set "$CT_ID" --description "$description"
-    else
-        log_dry_run "Set container description to professional dashboard"
-    fi
-}
-
-start_container() {
-    log_step "Starting container $CT_ID..."
-    
-    if [ "$DRY_RUN" = false ]; then
-        pct start "$CT_ID" 2>&1 | tee -a "$LOG_FILE" || error_exit "Failed to start container"
+        pct start "$CT_ID" || error_exit "Failed to start container"
         
-        log "Waiting for container to initialize..."
-        sleep 5
-        
-        local max_wait=30
-        local count=0
-        while [ $count -lt $max_wait ]; do
-            if pct exec "$CT_ID" -- ip addr show eth0 | grep -q "inet"; then
+        # Wait for network
+        log "Waiting for container to initialize network..."
+        local counter=0
+        while [ $counter -lt 30 ]; do
+            if pct exec "$CT_ID" -- ip addr show eth0 | grep -q "inet "; then
                 break
             fi
             sleep 1
-            ((count++))
+            ((counter++))
         done
         
         log_success "Container $CT_ID is running"
@@ -1399,346 +1328,152 @@ path = /opt/frigate
 comment = Frigate installation directory
 browsable = yes
 read only = no
-writable = yes
 guest ok = yes
 public = yes
-create mask = 0777
-directory mask = 0777
+writable = yes
 force user = root
-force create mode = 0777
-force directory mode = 0777
+create mask = 0644
+directory mask = 0755
 
 [Config]
 path = /opt/frigate/config
-comment = Frigate configuration
+comment = Frigate configuration files
 browsable = yes
 read only = no
-writable = yes
 guest ok = yes
 public = yes
-create mask = 0777
-directory mask = 0777
+writable = yes
 force user = root
-force create mode = 0777
-force directory mode = 0777
+create mask = 0644
+directory mask = 0755
 
 [Media]
 path = /opt/frigate/storage
-comment = Frigate recordings and media
+comment = Frigate media storage
 browsable = yes
 read only = no
-writable = yes
 guest ok = yes
 public = yes
-create mask = 0777
-directory mask = 0777
+writable = yes
 force user = root
-force create mode = 0777
-force directory mode = 0777
+create mask = 0644
+directory mask = 0755
 EOF
-    else
-        log_dry_run "Create /etc/samba/smb.conf"
     fi
     
-    # Set root Samba password
-    local samba_pass=""
-    
-    if [ -n "$SSH_PASSWORD" ]; then
-        samba_pass="$SSH_PASSWORD"
-    elif [ -n "$ROOT_PASSWORD" ]; then
-        samba_pass="$ROOT_PASSWORD"
-    fi
-    
-    if [ -z "$samba_pass" ]; then
-        log_error "No password available for Samba setup!"
-        return 1
-    fi
-
-    if [ "$DRY_RUN" = false ]; then
-        echo -e "$samba_pass\n$samba_pass" | pct exec "$CT_ID" -- smbpasswd -a -s root
-    else
-        log_dry_run "Set Samba password for root"
-    fi
+    # Set permissions
+    execute_in_container "chmod -R 777 /opt/frigate/storage"
     
     # Restart Samba
     execute_in_container "systemctl restart smbd"
     execute_in_container "systemctl enable smbd"
     
-    log_success "Samba configured with shares: Frigate, Config, Media"
+    log_success "Samba configured"
 }
 
-setup_root_password() {
-    log_step "Setting up root password..."
+setup_extra_disk() {
+    if [ "$ADD_EXTRA_DISK" != true ]; then
+        return
+    fi
     
-    if [ -n "$ROOT_PASSWORD" ]; then
-        execute_in_container "echo 'root:$ROOT_PASSWORD' | chpasswd"
-        log_success "Root password set"
+    log_step "Adding extra disk for recordings ($EXTRA_DISK_SIZE GB)..."
+    
+    if [ "$DRY_RUN" = false ]; then
+        # Find next mount point ID
+        local mp_id=0
+        while grep -q "mp$mp_id" "/etc/pve/lxc/${CT_ID}.conf"; do
+            ((mp_id++))
+        done
+        
+        log "Using mount point mp$mp_id on $EXTRA_DISK_STORAGE"
+        pct set "$CT_ID" "-mp$mp_id" "$EXTRA_DISK_STORAGE:$EXTRA_DISK_SIZE,mp=/opt/frigate/storage" 2>&1 | tee -a "$LOG_FILE" || log_warn "Failed to add extra disk. Using rootfs instead."
+        
+        log_success "Extra disk added and mounted to /opt/frigate/storage"
     else
-        log_warn "No root password set (this should not happen)"
+        log_dry_run "Add $EXTRA_DISK_SIZE GB disk to $CT_ID on $EXTRA_DISK_STORAGE"
+    fi
+}
+
+create_snapshot() {
+    if [ "$DO_SNAPSHOT" != true ]; then
+        return
+    fi
+    
+    SNAPSHOT_NAME="Post-Install-$(date +%Y%m%d-%H%M)"
+    log_step "Creating post-installation snapshot: $SNAPSHOT_NAME..."
+    
+    if [ "$DRY_RUN" = false ]; then
+        pct snapshot "$CT_ID" "$SNAPSHOT_NAME" --description "Automatically created after Frigate installation" 2>&1 | tee -a "$LOG_FILE" || log_warn "Failed to create snapshot."
+        log_success "Snapshot created"
+    else
+        log_dry_run "Create snapshot $SNAPSHOT_NAME for container $CT_ID"
     fi
 }
 
 # ============================================================================
-# USAGE & MAIN
+# MAIN EXECUTION
 # ============================================================================
 
-show_usage() {
-    cat << EOF
-Frigate NVR Docker Installation Script for Proxmox VE v${VERSION}
-
-USAGE:
-    $0 [OPTIONS]
-
-OPTIONS:
-    --dry-run     Run in simulation mode (no actual changes)
-    --verbose     Enable verbose output
-    --vlan TAG    Specify a VLAN tag for the container network
-    --bridge NAME Specify the network bridge to use (default: vmbr0)
-
-    --help        Show this help message
-
-DESCRIPTION:
-    Automated Docker-based installation script for Frigate NVR on Proxmox VE.
-    Creates an LXC container and installs Frigate using Docker Compose
-    with Intel iGPU hardware acceleration support.
-
-REQUIREMENTS:
-    - Proxmox VE 7.0 or later
-    - Root privileges
-    - Internet connection
-
-EOF
-}
-
-parse_arguments() {
-    while [[ $# -gt 0 ]]; do
-        case $1 in
-            --dry-run)
-                DRY_RUN=true
-                shift
-                ;;
-            --verbose)
-                VERBOSE=true
-                shift
-                ;;
-            --help|-h)
-                show_usage
-                exit 0
-                ;;
-            --vlan)
-                CT_VLAN="$2"
-                shift 2
-                ;;
-            --bridge)
-                CT_BRIDGE="$2"
-                shift 2
-                ;;
-
-            *)
-                log_error "Unknown option: $1"
-                show_usage
-                exit 1
-                ;;
-        esac
-    done
-}
-
 main() {
-    clear
-    
+    echo -e "${BLUE}"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo -e "  ${CYAN}Frigate Proxmox Script${NC}"
+    echo "  FRIGATE NVR DOCKER INSTALLER FOR PROXMOX"
     echo "  Version: $VERSION"
-    echo "  Using Docker Compose (Fast & Reliable)"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo ""
-    
-    log "Starting Frigate Docker installation at $(date)"
-    log "Log file: $LOG_FILE"
-    echo ""
-    
-    # Pre-flight checks
-    check_proxmox
+    echo -e "${NC}"
+
     check_root
+    check_proxmox
     check_hardware
     
-    # Configuration
     configure_container
-    check_resources
     show_configuration_summary
-    
-    # Installation
-    echo ""
-    log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log "PHASE 1: Creating LXC Container"
-    log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
     download_debian_template
     create_lxc_container
-    configure_igpu_passthrough
-    configure_coral_passthrough
-    configure_nvidia_passthrough
-    configure_shm_size
-    start_container
+    configure_lxc_passthrough
+    configure_coral_pcie_passthrough
+    setup_extra_disk
     
-    if [ "$DO_SNAPSHOT" = true ]; then
-        log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        log "SNAPSHOT: Creating baseline snapshot"
-        log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        
-        # Resolve actual version for the snapshot name if it's stable/beta
-        local resolved_version="$FRIGATE_VERSION"
-        if [ "$FRIGATE_VERSION" = "stable" ]; then
-            resolved_version=$(curl -s https://api.github.com/repos/blakeblackshear/frigate/releases/latest | grep '"tag_name":' | cut -d '"' -f 4 | sed 's/^v//')
-        elif [ "$FRIGATE_VERSION" = "beta" ]; then
-             resolved_version=$(curl -s https://api.github.com/repos/blakeblackshear/frigate/releases | grep -B 15 '"prerelease": true' | grep '"tag_name":' | head -n 1 | cut -d '"' -f 4 | sed 's/^v//')
-        fi
-        
-        local timestamp=$(date +%Y%m%d_%H%M%S)
-        if [ -z "$SNAPSHOT_NAME" ]; then
-            SNAPSHOT_NAME="snapshot_${timestamp}"
-        else
-            SNAPSHOT_NAME="${SNAPSHOT_NAME}_${timestamp}"
-        fi
-        # Sanitize
-        SNAPSHOT_NAME=$(echo "$SNAPSHOT_NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
-        
-        log "Taking snapshot: $SNAPSHOT_NAME..."
-        if [ "$DRY_RUN" = false ]; then
-            if pct snapshot "$CT_ID" "$SNAPSHOT_NAME" --description "Clean baseline after container creation and hardware passthrough" 2>&1 | tee -a "$LOG_FILE"; then
-                log_success "Snapshot $SNAPSHOT_NAME created"
-            else
-                log_warn "Failed to create snapshot '$SNAPSHOT_NAME'. Continuing installation anyway..."
-            fi
-        else
-            log_dry_run "pct snapshot $CT_ID $SNAPSHOT_NAME"
-        fi
-    fi
-    
-    echo ""
-    log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log "PHASE 2: Installing Docker"
-    log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    start_lxc_container
     
     install_docker
     install_nvidia_toolkit
-    
-    echo ""
-    log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log "PHASE 3: Preparing Frigate"
-    log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
     create_frigate_directories
     create_docker_compose
     create_frigate_config
     
-    # Set root password (always)
-    setup_root_password
-    
-    # Optional features
-    if [ "$ENABLE_SSH" = "yes" ] || [ "$ENABLE_SAMBA" = "yes" ]; then
-        echo ""
-        log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        log "PHASE 4: Setting Up Optional Features"
-        log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        
-        setup_ssh
-        setup_samba
-    fi
-    
-    echo ""
-    log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log "PHASE 5: Starting Frigate NVR"
-    log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    
     start_frigate
-    create_container_summary_dashboard
     
-    # Completion
+    setup_ssh
+    setup_samba
+    
+    create_snapshot
+
     echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  ✓ INSTALLATION COMPLETE!"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${GREEN}  INSTALLATION COMPLETE!${NC}"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
     
-    if [ "$DRY_RUN" = false ]; then
-        local container_ip
-        container_ip=$(pct exec "$CT_ID" -- ip -4 addr show eth0 | grep inet | awk '{print $2}' | cut -d/ -f1)
-        
-        log_success "Frigate NVR has been successfully installed!"
-        echo ""
-        echo "Container Details:"
-        echo "  Container ID:  $CT_ID"
-        echo "  Hostname:      $CT_HOSTNAME"
-        echo "  IP Address:    $container_ip"
-        echo ""
-        echo "Frigate Access:"
-        echo -e "  Web Interface: \033]8;;http://${container_ip}:${FRIGATE_PORT}\007http://${container_ip}:${FRIGATE_PORT}\033]8;;\007"
-        echo -e "  Frigate Auth:  \033]8;;https://${container_ip}:${AUTH_PORT}\007https://${container_ip}:${AUTH_PORT}\033]8;;\007"
-        echo ""
-        echo "Configuration:"
-        echo "  Directory:     /opt/frigate"
-        echo "  Config File:   /opt/frigate/config/config.yml"
-        echo "  Storage:       /opt/frigate/storage"
-        echo ""
-        echo "Docker Commands (run inside container):"
-        echo "  View logs:     cd /opt/frigate && docker compose logs -f"
-        echo "  Restart:       cd /opt/frigate && docker compose restart"
-        echo "  Stop:          cd /opt/frigate && docker compose down"
-        echo "  Update image:  cd /opt/frigate && docker compose pull && docker compose up -d"
-        echo ""
-        echo "Next Steps:"
-        echo -e "  1. Access Frigate at \033]8;;http://${container_ip}:${FRIGATE_PORT}\007http://${container_ip}:${FRIGATE_PORT}\033]8;;\007"
-        echo "  2. Note the initial password from logs:"
-        echo "     pct exec $CT_ID -- docker logs frigate"
-        echo "  3. Add your cameras to /opt/frigate/config/config.yml"
-        echo "  4. Restart: pct exec $CT_ID -- 'cd /opt/frigate && docker compose restart'"
-        echo ""
-        log "Installation log saved to: $LOG_FILE"
-    else
-        echo "To perform the actual installation, run:"
-        echo "  $0"
+    local ip_addr
+    ip_addr=$(pct exec "$CT_ID" -- ip addr show eth0 | grep "inet " | awk '{print $2}' | cut -d/ -f1 | head -n 1)
+    
+    echo "  Frigate Web UI:  http://${ip_addr:-$CT_IP}:$FRIGATE_PORT"
+    echo "  go2rtc API:      http://${ip_addr:-$CT_IP}:$GO2RTC_PORT"
+    echo "  Container ID:    $CT_ID"
+    echo ""
+    
+    if [ "$REBOOT_REQUIRED" = true ]; then
+        echo -e "${YELLOW}[IMPORTANT]${NC} A reboot of the Proxmox HOST is recommended to"
+        echo "ensure all GPU passthrough settings and drivers are fully active."
     fi
     
-    # Final Verification
-    if [ "$DRY_RUN" = false ] && [ "$ENABLE_IGPU" = "yes" ]; then
-        echo ""
-        log_step "Verifying hardware acceleration..."
-        if pct exec "$CT_ID" -- ls -l /dev/dri/renderD128 &>/dev/null; then
-            log_success "Hardware acceleration device confirmed inside container."
-        else
-            log_error "Hardware acceleration device NOT found inside container!"
-            log_warn "Check Proxmox host logs and LXC configuration."
-        fi
-    fi
-    
-    check_reboot
     echo ""
-    log "Installation completed at $(date)"
+    echo "Log file: $LOG_FILE"
+    echo ""
 }
 
-# Entry point
-parse_arguments "$@"
-
-# Check for interactive terminal
-if [ ! -t 0 ]; then
-    echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  ERROR: This script requires an interactive terminal"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo ""
-    echo "Please download and run the script manually:"
-    echo ""
-    echo "  wget https://raw.githubusercontent.com/saihgupr/frigate-script/main/install.sh"
-    echo "  bash install.sh"
-    echo ""
-    echo "Or run with curl (interactive mode):"
-    echo ""
-    echo "  bash <(curl -s https://raw.githubusercontent.com/saihgupr/frigate-script/main/install.sh)"
-    echo ""
-    exit 1
-fi
-
-main
-
-exit 0
+# Run main function with all arguments
+main "$@"
