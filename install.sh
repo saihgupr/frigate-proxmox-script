@@ -962,6 +962,33 @@ EOF
     fi
 }
 
+configure_coral_usb_passthrough() {
+    # We enable USB passthrough if a Coral USB is detected OR if iGPU is enabled
+    # This matches user feedback that this mapping is often required for stability
+    if [ "$DETECTED_CORAL" != "USB" ] && [ "$ENABLE_IGPU" != "yes" ]; then
+        return
+    fi
+    
+    log_step "Configuring Google Coral USB passthrough..."
+    
+    local lxc_conf="/etc/pve/lxc/${CT_ID}.conf"
+    
+    if [ "$DRY_RUN" = false ]; then
+        if ! grep -q "/dev/bus/usb" "$lxc_conf"; then
+            cat >> "$lxc_conf" << EOF
+
+# Frigate: Google Coral USB Passthrough
+lxc.mount.entry: /dev/bus/usb dev/bus/usb none bind,optional,create=dir
+EOF
+            log_success "Coral USB passthrough configured in $lxc_conf"
+        else
+            log "Coral USB passthrough already configured in $lxc_conf"
+        fi
+    else
+        log_dry_run "Add Coral USB passthrough configuration to $lxc_conf"
+    fi
+}
+
 configure_nvidia_passthrough() {
     if [ "$SELECTED_GPU_TYPE" != "nvidia" ]; then
         return
@@ -1145,7 +1172,7 @@ create_frigate_directories() {
 }
 
 create_docker_compose() {
-    log_step "Creating compose.yml..."
+    log_step "Creating docker-compose.yml..."
     
     local devices_list=""
     local deploy_config=""
@@ -1173,7 +1200,7 @@ create_docker_compose() {
         else
             devices_list="      - /dev/apex_0:/dev/apex_0"
         fi
-    elif [ "$DETECTED_CORAL" = "USB" ]; then
+    elif [ "$DETECTED_CORAL" = "USB" ] || [ "$ENABLE_IGPU" = "yes" ]; then
         if [ -n "$devices_list" ]; then
             devices_list="$devices_list
       - /dev/bus/usb:/dev/bus/usb"
@@ -1199,7 +1226,7 @@ $deploy_config"
     fi
     
     if [ "$DRY_RUN" = false ]; then
-        pct exec "$CT_ID" -- bash -c "cat > /opt/frigate/compose.yml" << EOF
+        pct exec "$CT_ID" -- bash -c "cat > /opt/frigate/docker-compose.yml" << EOF
 version: "3.9"
 
 services:
@@ -1232,9 +1259,9 @@ $device_config
       - CAP_PERFMON
     shm_size: "$SHM_SIZE"
 EOF
-        log_success "compose.yml created"
+        log_success "docker-compose.yml created"
     else
-        log_dry_run "Create compose.yml"
+        log_dry_run "Create docker-compose.yml"
     fi
 }
 
@@ -1490,6 +1517,7 @@ main() {
     create_lxc_container
     configure_lxc_passthrough
     configure_coral_pcie_passthrough
+    configure_coral_usb_passthrough
     setup_extra_disk
     
     start_lxc_container
