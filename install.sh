@@ -1230,11 +1230,11 @@ configure_nvidia_passthrough() {
             # Legacy way
             # Device Nodes
             if ! grep -q "nvidia" "$lxc_conf"; then
-            # Get major numbers for devices (Resilience for Issue #30)
-            local nvidia_major=$(ls -l /dev/nvidiactl 2>/dev/null | awk '{print $5}' | cut -d, -f1 || echo "195")
-            local uvm_major=$(ls -l /dev/nvidia-uvm 2>/dev/null | awk '{print $5}' | cut -d, -f1 || echo "511")
-            
-            cat >> "$lxc_conf" << EOF
+                # Get major numbers for devices (Resilience for Issue #30)
+                local nvidia_major=$(ls -l /dev/nvidiactl 2>/dev/null | awk '{print $5}' | cut -d, -f1 || echo "195")
+                local uvm_major=$(ls -l /dev/nvidia-uvm 2>/dev/null | awk '{print $5}' | cut -d, -f1 || echo "511")
+                
+                cat >> "$lxc_conf" << EOF
 
 # Frigate: NVIDIA GPU Passthrough
 lxc.cgroup2.devices.allow: c $nvidia_major:* rwm
@@ -1245,13 +1245,11 @@ lxc.mount.entry: /dev/nvidia-modeset dev/nvidia-modeset none bind,optional,creat
 lxc.mount.entry: /dev/nvidia-uvm dev/nvidia-uvm none bind,optional,create=file
 lxc.mount.entry: /dev/nvidia-uvm-tools dev/nvidia-uvm-tools none bind,optional,create=file
 EOF
-            log_success "NVIDIA GPU device nodes configured in $lxc_conf (Major: $nvidia_major, $uvm_major)"
+                log_success "NVIDIA GPU device nodes configured in $lxc_conf (Major: $nvidia_major, $uvm_major)"
+            fi
         fi
-    fi
-    fi
 
-    # Library Mapping (Resilience for Issue #30)
-    if [ "$DRY_RUN" = false ]; then
+        # Library Mapping (Resilience for Issue #30)
         log "Mapping NVIDIA libraries to container..."
         local lib_list=(
             "libnvidia-ml.so.1"
