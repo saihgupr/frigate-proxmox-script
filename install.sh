@@ -18,6 +18,7 @@ LOG_FILE="/tmp/frigate-install-$(date +%Y%m%d-%H%M%S).log"
 DRY_RUN=false
 VERBOSE=false
 REBOOT_REQUIRED=false
+PVE_VERSION=""
 
 # Colors for output
 RED='\033[0;31m'
@@ -266,9 +267,9 @@ check_proxmox() {
         error_exit "This script must be run on a Proxmox VE host!"
     fi
     
-    local pve_version
-    pve_version=$(pveversion | grep "pve-manager" | cut -d'/' -f2 | cut -d'-' -f1)
-    log_success "Running on Proxmox VE $pve_version"
+    # Extract version for compatibility checks (e.g., 8.2)
+    PVE_VERSION=$(pveversion | grep "pve-manager" | cut -d'/' -f2 | cut -d'-' -f1 | cut -d'.' -f1,2)
+    log_success "Running on Proxmox VE $PVE_VERSION"
 }
 
 check_root() {
@@ -805,6 +806,53 @@ configure_container() {
     else
         ENABLE_SSH="no"
     fi
+
+    # Container Security Level (Privileged vs Unprivileged)
+    echo ""
+    log_step "Container Security"
+    
+    local recommend_privileged=false
+    local reason=""
+    
+    # Simple version comparison for PVE < 8.2
+    local pve_major=$(echo "$PVE_VERSION" | cut -d. -f1)
+    local pve_minor=$(echo "$PVE_VERSION" | cut -d. -f2)
+    local pve_below_82=false
+    if [ "$pve_major" -lt 8 ] || { [ "$pve_major" -eq 8 ] && [ "$pve_minor" -lt 2 ]; }; then
+        pve_below_82=true
+    fi
+
+    if [ "$SELECTED_GPU_TYPE" = "nvidia" ]; then
+        recommend_privileged=true
+        reason="NVIDIA GPU detected (Privileged mode is significantly easier for NVIDIA drivers)"
+    elif [ "$DETECTED_CORAL" = "PCIe" ]; then
+        recommend_privileged=true
+        reason="Coral PCIe detected (Privileged mode recommended for Gasket/Apex drivers)"
+    elif [ "$pve_below_82" = true ]; then
+        recommend_privileged=true
+        reason="Proxmox version $PVE_VERSION is < 8.2 (Native dev[n] passthrough requires 8.2+)"
+    fi
+
+    echo "Select container security level:"
+    if [ "$recommend_privileged" = true ]; then
+        echo "  1) Privileged (Recommended - $reason)"
+        echo "  2) Unprivileged (Higher security, but hardware passthrough might fail on this setup)"
+        read -p "Selection [default: 1]: " security_choice
+        security_choice=${security_choice:-1}
+    else
+        echo "  1) Privileged (Legacy mode, lower security)"
+        echo "  2) Unprivileged (Recommended - Modern, higher security) [default]"
+        read -p "Selection [default: 2]: " security_choice
+        security_choice=${security_choice:-2}
+    fi
+
+    if [ "$security_choice" = "1" ]; then
+        CT_PRIVILEGED=1
+        log "Selected: Privileged Container (Security: Lower, Compatibility: High)"
+    else
+        CT_PRIVILEGED=0
+        log "Selected: Unprivileged Container (Security: High, Compatibility: Modern)"
+    fi
     
     echo ""
     read -p "Enable Samba file sharing (config & storage only, password required)? (y/N): " enable_samba
@@ -855,7 +903,9 @@ show_configuration_summary() {
     echo "Container Settings:"
     echo "  ID:              $CT_ID"
     echo "  Hostname:        $CT_HOSTNAME"
-    echo "  Type:            Unprivileged LXC"
+    local security_label="Unprivileged"
+    [ "$CT_PRIVILEGED" = "1" ] && security_label="Privileged"
+    echo "  Type:            $security_label LXC"
     echo "  CPU Cores:       $CT_CORES"
     echo "  RAM:             ${CT_RAM}MB"
     echo "  Disk:            ${CT_DISK}GB"
@@ -990,7 +1040,7 @@ create_lxc_container() {
             --net0 "$net_config" \
             --onboot 1 \
             --ostype debian \
-            --unprivileged 1 \
+            --unprivileged $((1 - CT_PRIVILEGED)) \
             --features nesting=1,keyctl=1 \
             $password_part 2>&1 | tee -a "$LOG_FILE" || error_exit "Failed to create container"
         
@@ -1015,8 +1065,10 @@ configure_lxc_passthrough() {
             fi
         fi
         
-        # Coral USB Passthrough (usually handled by pct device add, but we'll do it manually if needed)
-        # Note: USB Passthrough is better handled via the UI or by mapping the specific vendor:product
+        # Coral Passthrough
+        if [ "$DETECTED_CORAL" = "PCIe" ]; then
+            configure_coral_pcie_passthrough
+        fi
         
         log_success "Passthrough configured"
     fi
@@ -1027,40 +1079,57 @@ configure_igpu_passthrough() {
         return
     fi
     
-    log_step "Configuring minimal iGPU passthrough..."
+    log_step "Configuring iGPU passthrough..."
     
     local lxc_conf="/etc/pve/lxc/${CT_ID}.conf"
     
+    # Get device major/minor and GID
+    local dev_major=$(stat -c '%t' "$SELECTED_RENDER_NODE")
+    dev_major=$((0x$dev_major))
+    local dev_minor=$(stat -c '%T' "$SELECTED_RENDER_NODE")
+    dev_minor=$((0x$dev_minor))
+    
+    local render_gid
+    render_gid=$(getent group render 2>/dev/null | cut -d: -f3)
+    if [ -z "$render_gid" ]; then
+        render_gid=$(stat -c '%g' "$SELECTED_RENDER_NODE")
+    fi
+
+    # Check PVE version
+    local pve_major=$(echo "$PVE_VERSION" | cut -d. -f1)
+    local pve_minor=$(echo "$PVE_VERSION" | cut -d. -f2)
+    local pve_82_plus=true
+    if [ "$pve_major" -lt 8 ] || { [ "$pve_major" -eq 8 ] && [ "$pve_minor" -lt 2 ]; }; then
+        pve_82_plus=false
+    fi
+
     if [ "$DRY_RUN" = false ]; then
-        if [ ! -c "$SELECTED_RENDER_NODE" ]; then
-            error_exit "Selected render node '$SELECTED_RENDER_NODE' does not exist or is not a character device on the host."
-        fi
-
-        # Get render group GID from host to pass through to container
-        local render_gid
-        render_gid=$(getent group render 2>/dev/null | cut -d: -f3)
-        if [ -z "$render_gid" ]; then
-            render_gid=$(stat -c '%g' "$SELECTED_RENDER_NODE")
-        fi
-
-        # Find the next free dev slot in the LXC config
-        local dev_slot=0
-        while grep -q "^dev${dev_slot}:" "$lxc_conf" 2>/dev/null; do
-            dev_slot=$((dev_slot + 1))
-        done
-
-        # Use Proxmox 8.2+ dev[n] passthrough (replaces cgroup2 + mount.entry approach)
-        # gid= sets the device node's group GID inside the container
-        cat >> "$lxc_conf" << EOF
-
-# Frigate: Minimal iGPU passthrough (selected render node only)
-dev${dev_slot}: $SELECTED_RENDER_NODE,gid=$render_gid
+        if [ "$pve_82_plus" = true ]; then
+            # Modern Proxmox 8.2+ way (Works for both Privileged/Unprivileged)
+            local dev_slot=0
+            while grep -q "^dev${dev_slot}:" "$lxc_conf" 2>/dev/null; do
+                dev_slot=$((dev_slot + 1))
+            done
+            echo "" >> "$lxc_conf"
+            echo "# Frigate: iGPU passthrough (Proxmox 8.2+ dev method)" >> "$lxc_conf"
+            echo "dev${dev_slot}: $SELECTED_RENDER_NODE,gid=$render_gid" >> "$lxc_conf"
+            log_success "iGPU passthrough configured using modern dev${dev_slot} method"
+        else
+            # Legacy way (< 8.2)
+            echo "" >> "$lxc_conf"
+            echo "# Frigate: iGPU passthrough (Legacy method)" >> "$lxc_conf"
+            cat >> "$lxc_conf" << EOF
+lxc.cgroup2.devices.allow: c $dev_major:$dev_minor rwm
+lxc.mount.entry: $SELECTED_RENDER_NODE dev/dri/$(basename "$SELECTED_RENDER_NODE") none bind,optional,create=file
 EOF
-        log_success "iGPU passthrough configured (dev${dev_slot}: $(basename "$SELECTED_RENDER_NODE"), gid=$render_gid)"
-        log_warn "Note: GPU stats (e.g. intel_gpu_top) are not visible inside an unprivileged container. Hardware acceleration still works."
+            if [ "$CT_PRIVILEGED" = "0" ]; then
+                log_warn "Unprivileged iGPU passthrough on Proxmox < 8.2 may require manual GID mapping."
+            fi
+            log_success "iGPU passthrough configured using legacy cgroup2 method"
+        fi
         REBOOT_REQUIRED=true
     else
-        log_dry_run "Add minimal iGPU passthrough configuration to $lxc_conf"
+        log_dry_run "Add iGPU passthrough configuration to $lxc_conf"
     fi
 }
 
@@ -1072,20 +1141,41 @@ configure_coral_pcie_passthrough() {
     log_step "Configuring Google Coral PCIe passthrough..."
     
     local lxc_conf="/etc/pve/lxc/${CT_ID}.conf"
+    local apex_dev="/dev/apex_0"
     
+    # Check PVE version
+    local pve_major=$(echo "$PVE_VERSION" | cut -d. -f1)
+    local pve_minor=$(echo "$PVE_VERSION" | cut -d. -f2)
+    local pve_82_plus=true
+    if [ "$pve_major" -lt 8 ] || { [ "$pve_major" -eq 8 ] && [ "$pve_minor" -lt 2 ]; }; then
+        pve_82_plus=false
+    fi
+
     if [ "$DRY_RUN" = false ]; then
-        if ! grep -q "apex_0" "$lxc_conf"; then
+        if [ "$pve_82_plus" = true ]; then
+            # Modern Proxmox 8.2+ way
+            local apex_gid
+            apex_gid=$(stat -c '%g' "$apex_dev" 2>/dev/null || echo "0")
+            
+            local dev_slot=0
+            while grep -q "^dev${dev_slot}:" "$lxc_conf" 2>/dev/null; do
+                dev_slot=$((dev_slot + 1))
+            done
+            echo "" >> "$lxc_conf"
+            echo "# Frigate: Google Coral PCIe (Proxmox 8.2+ dev method)" >> "$lxc_conf"
+            echo "dev${dev_slot}: $apex_dev,gid=$apex_gid" >> "$lxc_conf"
+            log_success "Coral PCIe passthrough configured using modern dev${dev_slot} method"
+        else
+            # Legacy way
             cat >> "$lxc_conf" << EOF
 
-# Frigate: Google Coral PCIe Passthrough
+# Frigate: Google Coral PCIe Passthrough (Legacy method)
 lxc.cgroup2.devices.allow: c 120:* rwm
-lxc.mount.entry: /dev/apex_0 dev/apex_0 none bind,optional,create=file
+lxc.mount.entry: $apex_dev dev/apex_0 none bind,optional,create=file
 EOF
-            log_success "Coral PCIe passthrough configured in $lxc_conf"
-            REBOOT_REQUIRED=true
-        else
-            log "Coral PCIe passthrough already configured in $lxc_conf"
+            log_success "Coral PCIe passthrough configured using legacy method"
         fi
+        REBOOT_REQUIRED=true
     else
         log_dry_run "Add Coral PCIe passthrough configuration to $lxc_conf"
     fi
@@ -1100,9 +1190,46 @@ configure_nvidia_passthrough() {
     
     local lxc_conf="/etc/pve/lxc/${CT_ID}.conf"
     
+    # Check PVE version
+    local pve_major=$(echo "$PVE_VERSION" | cut -d. -f1)
+    local pve_minor=$(echo "$PVE_VERSION" | cut -d. -f2)
+    local pve_82_plus=true
+    if [ "$pve_major" -lt 8 ] || { [ "$pve_major" -eq 8 ] && [ "$pve_minor" -lt 2 ]; }; then
+        pve_82_plus=false
+    fi
+
     if [ "$DRY_RUN" = false ]; then
-        # Device Nodes
-        if ! grep -q "nvidia" "$lxc_conf"; then
+        if [ "$pve_82_plus" = true ]; then
+            # Modern Proxmox 8.2+ way
+            local nvidia_devs=(
+                "/dev/nvidia0"
+                "/dev/nvidiactl"
+                "/dev/nvidia-modeset"
+                "/dev/nvidia-uvm"
+                "/dev/nvidia-uvm-tools"
+            )
+            
+            echo "" >> "$lxc_conf"
+            echo "# Frigate: NVIDIA GPU (Proxmox 8.2+ dev method)" >> "$lxc_conf"
+            
+            for dev in "${nvidia_devs[@]}"; do
+                if [ -c "$dev" ]; then
+                    local dev_gid
+                    dev_gid=$(stat -c '%g' "$dev" 2>/dev/null || echo "0")
+                    
+                    local dev_slot=0
+                    while grep -q "^dev${dev_slot}:" "$lxc_conf" 2>/dev/null; do
+                        dev_slot=$((dev_slot + 1))
+                    done
+                    echo "dev${dev_slot}: $dev,gid=$dev_gid" >> "$lxc_conf"
+                    log "  Mapped $dev to dev${dev_slot} (gid=$dev_gid)"
+                fi
+            done
+            log_success "NVIDIA GPU device nodes configured using modern dev method"
+        else
+            # Legacy way
+            # Device Nodes
+            if ! grep -q "nvidia" "$lxc_conf"; then
             # Get major numbers for devices (Resilience for Issue #30)
             local nvidia_major=$(ls -l /dev/nvidiactl 2>/dev/null | awk '{print $5}' | cut -d, -f1 || echo "195")
             local uvm_major=$(ls -l /dev/nvidia-uvm 2>/dev/null | awk '{print $5}' | cut -d, -f1 || echo "511")
@@ -1120,8 +1247,10 @@ lxc.mount.entry: /dev/nvidia-uvm-tools dev/nvidia-uvm-tools none bind,optional,c
 EOF
             log_success "NVIDIA GPU device nodes configured in $lxc_conf (Major: $nvidia_major, $uvm_major)"
         fi
+    fi
 
-        # Library Mapping (Resilience for Issue #30)
+    # Library Mapping (Resilience for Issue #30)
+    if [ "$DRY_RUN" = false ]; then
         log "Mapping NVIDIA libraries to container..."
         local lib_list=(
             "libnvidia-ml.so.1"
@@ -1701,7 +1830,6 @@ main() {
     download_debian_template
     create_lxc_container
     configure_lxc_passthrough
-    configure_coral_pcie_passthrough
     setup_extra_disk
     
     start_lxc_container
