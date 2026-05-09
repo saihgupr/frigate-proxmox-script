@@ -1111,16 +1111,18 @@ configure_igpu_passthrough() {
                 dev_slot=$((dev_slot + 1))
             done
             echo "" >> "$lxc_conf"
-            echo "# Frigate: iGPU passthrough (Proxmox 8.2+ dev method)" >> "$lxc_conf"
+            echo "# Frigate: iGPU Passthrough + AppArmor (Proxmox 8.2+ dev method)" >> "$lxc_conf"
             echo "dev${dev_slot}: $SELECTED_RENDER_NODE,gid=$render_gid" >> "$lxc_conf"
-            log_success "iGPU passthrough configured using modern dev${dev_slot} method"
+            echo "lxc.apparmor.profile: unconfined" >> "$lxc_conf"
+            log_success "iGPU passthrough and AppArmor configured in $lxc_conf"
         else
             # Legacy way (< 8.2)
             echo "" >> "$lxc_conf"
-            echo "# Frigate: iGPU passthrough (Legacy method)" >> "$lxc_conf"
+            echo "# Frigate: iGPU Passthrough + AppArmor (Legacy method)" >> "$lxc_conf"
             cat >> "$lxc_conf" << EOF
 lxc.cgroup2.devices.allow: c $dev_major:$dev_minor rwm
 lxc.mount.entry: $SELECTED_RENDER_NODE dev/dri/$(basename "$SELECTED_RENDER_NODE") none bind,optional,create=file
+lxc.apparmor.profile: unconfined
 EOF
             if [ "$CT_PRIVILEGED" = "0" ]; then
                 log_warn "Unprivileged iGPU passthrough on Proxmox < 8.2 may require manual GID mapping."
@@ -1210,7 +1212,8 @@ configure_nvidia_passthrough() {
             )
             
             echo "" >> "$lxc_conf"
-            echo "# Frigate: NVIDIA GPU (Proxmox 8.2+ dev method)" >> "$lxc_conf"
+            echo "# Frigate: NVIDIA GPU + AppArmor (Proxmox 8.2+ dev method)" >> "$lxc_conf"
+            echo "lxc.apparmor.profile: unconfined" >> "$lxc_conf"
             
             for dev in "${nvidia_devs[@]}"; do
                 if [ -c "$dev" ]; then
@@ -1236,7 +1239,8 @@ configure_nvidia_passthrough() {
                 
                 cat >> "$lxc_conf" << EOF
 
-# Frigate: NVIDIA GPU Passthrough
+# Frigate: NVIDIA GPU Passthrough + AppArmor (Legacy method)
+lxc.apparmor.profile: unconfined
 lxc.cgroup2.devices.allow: c $nvidia_major:* rwm
 lxc.cgroup2.devices.allow: c $uvm_major:* rwm
 lxc.mount.entry: /dev/nvidia0 dev/nvidia0 none bind,optional,create=file
@@ -1863,8 +1867,8 @@ main() {
     echo ""
     
     if [ "$REBOOT_REQUIRED" = true ]; then
-        echo -e "${YELLOW}[INFO]${NC} GPU passthrough configured. If the container does not"
-        echo "detect the GPU, restart it with: pct restart $CT_ID"
+        echo -e "${YELLOW}[IMPORTANT]${NC} A reboot of the Proxmox HOST is recommended to"
+        echo "ensure all GPU passthrough settings and drivers are fully active."
     fi
     
     echo ""
