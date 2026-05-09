@@ -22,6 +22,8 @@ This script builds a production-ready Frigate stack from scratch: provisioning t
 ✅ **Hardware Auto-Detection** - Automatically identifies CPU, GPU, and Coral TPU  
 ✅ **Easy Updates** - Simple Docker pulls to keep your NVR current  
 ✅ **Home Assistant Ready** - Default ports and paths pre-configured  
+✅ **Samba File Sharing** - Out-of-the-box access to config and storage  
+✅ **Proxmox Dashboard** - Professional Markdown-based container summary  
 ✅ **Add-ons Included** - Optional SSH access for easy management  
 
 ## Requirements
@@ -39,6 +41,10 @@ This script builds a production-ready Frigate stack from scratch: provisioning t
 ```bash
 bash <(curl -s https://raw.githubusercontent.com/saihgupr/frigate-proxmox-script/main/install.sh)
 ```
+
+> [!TIP]
+> **Stuck on an old version?** GitHub's raw content cache can sometimes lag. If you don't see the latest version, try appending a timestamp:
+> `bash <(curl -s "https://raw.githubusercontent.com/saihgupr/frigate-proxmox-script/main/install.sh?$(date +%s)")`
 
 ### Option 2: Download and Run
 
@@ -82,6 +88,7 @@ The script will prompt you for:
 - **Disk Size** - Default: 10 GB (for recordings)
 - **Network** - DHCP or static IP
 - **Intel iGPU** - Enable hardware acceleration (recommended)
+- **Samba** - Enable file sharing for easy access to config and recordings
 - **Web Port** - Default: 5000 (Home Assistant compatible)
 - **SHM Size** - Default: 512mb (Configurable for high-resolution streams, e.g., `1gb`, `2gb`)
 - **Docker Image** - stable, beta, or custom version tag
@@ -139,6 +146,14 @@ Starting in Frigate 0.14+, you can edit the configuration directly in the web in
 2. Click the **Edit** button
 3. Make your changes
 4. Click **Save** (Frigate will automatically restart)
+
+#### Method 4: Use Samba (Easiest)
+
+If you enabled Samba during installation:
+1. Open your File Explorer (Windows) or Finder (Mac)
+2. Connect to `smb://<CONTAINER_IP>`
+3. Authenticate with user `frigate` and your chosen password
+4. Edit `config.yml` directly in the `Config` share using any text editor
 
 </details>
 
