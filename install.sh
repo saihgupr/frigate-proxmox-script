@@ -1111,14 +1111,14 @@ configure_igpu_passthrough() {
                 dev_slot=$((dev_slot + 1))
             done
             echo "" >> "$lxc_conf"
-            echo "# Frigate: iGPU Passthrough + AppArmor (Proxmox 8.2+ dev method)" >> "$lxc_conf"
+            echo "# Frigate: iGPU Passthrough + AppArmor" >> "$lxc_conf"
             echo "dev${dev_slot}: $SELECTED_RENDER_NODE,gid=$render_gid" >> "$lxc_conf"
             echo "lxc.apparmor.profile: unconfined" >> "$lxc_conf"
             log_success "iGPU passthrough and AppArmor configured in $lxc_conf"
         else
             # Legacy way (< 8.2)
             echo "" >> "$lxc_conf"
-            echo "# Frigate: iGPU Passthrough + AppArmor (Legacy method)" >> "$lxc_conf"
+            echo "# Frigate: iGPU Passthrough + AppArmor" >> "$lxc_conf"
             cat >> "$lxc_conf" << EOF
 lxc.cgroup2.devices.allow: c $dev_major:$dev_minor rwm
 lxc.mount.entry: $SELECTED_RENDER_NODE dev/dri/$(basename "$SELECTED_RENDER_NODE") none bind,optional,create=file
@@ -1164,14 +1164,14 @@ configure_coral_pcie_passthrough() {
                 dev_slot=$((dev_slot + 1))
             done
             echo "" >> "$lxc_conf"
-            echo "# Frigate: Google Coral PCIe (Proxmox 8.2+ dev method)" >> "$lxc_conf"
+            echo "# Frigate: Google Coral PCIe Passthrough" >> "$lxc_conf"
             echo "dev${dev_slot}: $apex_dev,gid=$apex_gid" >> "$lxc_conf"
             log_success "Coral PCIe passthrough configured using modern dev${dev_slot} method"
         else
             # Legacy way
             cat >> "$lxc_conf" << EOF
 
-# Frigate: Google Coral PCIe Passthrough (Legacy method)
+# Frigate: Google Coral PCIe Passthrough
 lxc.cgroup2.devices.allow: c 120:* rwm
 lxc.mount.entry: $apex_dev dev/apex_0 none bind,optional,create=file
 EOF
@@ -1212,7 +1212,7 @@ configure_nvidia_passthrough() {
             )
             
             echo "" >> "$lxc_conf"
-            echo "# Frigate: NVIDIA GPU + AppArmor (Proxmox 8.2+ dev method)" >> "$lxc_conf"
+            echo "# Frigate: NVIDIA GPU Passthrough + AppArmor" >> "$lxc_conf"
             echo "lxc.apparmor.profile: unconfined" >> "$lxc_conf"
             
             for dev in "${nvidia_devs[@]}"; do
@@ -1239,7 +1239,7 @@ configure_nvidia_passthrough() {
                 
                 cat >> "$lxc_conf" << EOF
 
-# Frigate: NVIDIA GPU Passthrough + AppArmor (Legacy method)
+# Frigate: NVIDIA GPU Passthrough + AppArmor
 lxc.apparmor.profile: unconfined
 lxc.cgroup2.devices.allow: c $nvidia_major:* rwm
 lxc.cgroup2.devices.allow: c $uvm_major:* rwm
