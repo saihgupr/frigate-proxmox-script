@@ -1165,13 +1165,20 @@ create_docker_compose() {
         fi
     fi
 
-    # 2. Add Coral PCIe if detected
+    # 2. Add Coral if detected
     if [ "$DETECTED_CORAL" = "PCIe" ]; then
         if [ -n "$devices_list" ]; then
             devices_list="$devices_list
       - /dev/apex_0:/dev/apex_0"
         else
             devices_list="      - /dev/apex_0:/dev/apex_0"
+        fi
+    elif [ "$DETECTED_CORAL" = "USB" ]; then
+        if [ -n "$devices_list" ]; then
+            devices_list="$devices_list
+      - /dev/bus/usb:/dev/bus/usb"
+        else
+            devices_list="      - /dev/bus/usb:/dev/bus/usb"
         fi
     fi
 
