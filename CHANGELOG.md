@@ -2,9 +2,12 @@
 
 ### Added
 - **Unprivileged LXC Support (#37)**: Added interactive support for creating unprivileged LXC containers. This improves security while providing a user-selectable prompt to fall back to privileged mode if required by specific hardware or kernel configurations.
+- **Samba File Sharing**: Integrated out-of-the-box support for Samba, providing easy network access to Frigate's `/config` and `/storage` directories with per-user authentication.
+- **Professional Proxmox Dashboard**: Re-implemented a high-fidelity Markdown summary for the Proxmox container notes, providing one-click access to the Web UI, go2rtc API, and hardware status directly from the Proxmox GUI.
 - **Modern Hardware Passthrough (PVE 8.2+)**: Implemented the modern `dev[n]` device mapping logic for Proxmox 8.2 and newer. This provides more robust hardware passthrough for NVIDIA GPUs, Intel iGPUs, and Coral TPUs while maintaining legacy fallback support for older PVE versions.
 - **Refined Configuration Notes**: Restored descriptive comments, AppArmor `unconfined` profiles, and custom Proxmox container description notes to ensure maximum visibility and compatibility.
 - **Improved Passthrough Security**: Unprivileged containers now include necessary idmap configurations and device permission adjustments to ensure hardware access remains functional without compromising security.
+- **GitHub Cache Bypassing**: Added documentation and script logic to bypass GitHub's `raw` content cache using timestamped queries, ensuring users always pull the latest installation script.
 
 ### Fixed
 - **NVIDIA Passthrough Logic**: Resolved a syntax error in the NVIDIA configuration function that could prevent script execution when using complex passthrough scenarios.
