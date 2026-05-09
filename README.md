@@ -5,10 +5,10 @@ A fully automated, one-command script for deploying [Frigate NVR](https://frigat
 This script builds a production-ready Frigate stack from scratch: provisioning the LXC container, installing Docker, and automatically configuring hardware acceleration.
 
 ### What it does:
-✅ **Full Stack Provisioning** - Creates a privileged LXC container with Docker and Compose pre-installed  
+✅ **Full Stack Provisioning** - Creates an unprivileged LXC container with Docker and Compose pre-installed  
 ✅ **GPU Accelerated** - Configures Intel iGPU acceleration by default (VAAPI/QSV)  
 ✅ **Alder Lake-N Optimized** - Tailored for Intel N95, N100, and **N150** processors  
-✅ **Zero Manual Setup** - Handles all the complex nesting, keyctl, and driver passthrough settings
+✅ **Zero Manual Setup** - Handles nesting, keyctl, and minimal GPU passthrough settings
 
 ![](images/1.1.png)
 ![](images/2.1.png)
@@ -22,7 +22,7 @@ This script builds a production-ready Frigate stack from scratch: provisioning t
 ✅ **Hardware Auto-Detection** - Automatically identifies CPU, GPU, and Coral TPU  
 ✅ **Easy Updates** - Simple Docker pulls to keep your NVR current  
 ✅ **Home Assistant Ready** - Default ports and paths pre-configured  
-✅ **Add-ons Included** - Optional SSH & Samba for easy file management  
+✅ **Add-ons Included** - Optional SSH access for easy management  
 
 ## Requirements
 
@@ -142,51 +142,6 @@ Starting in Frigate 0.14+, you can edit the configuration directly in the web in
 
 </details>
 
-<details>
-<summary><h3>Samba Network File Sharing</h3></summary>
-
-If you enabled Samba during installation, you can access and edit Frigate files directly from your computer using network file shares.
-
-**Available Shares:**
-
-1. **`\\<CONTAINER_IP>\Frigate`** - Full Frigate installation directory (`/opt/frigate`)
-2. **`\\<CONTAINER_IP>\Config`** - Configuration files only (`/opt/frigate/config`)
-3. **`\\<CONTAINER_IP>\Media`** - Recordings and snapshots (`/opt/frigate/storage`)
-
-**How to Connect:**
-
-**Windows:**
-1. Open File Explorer
-2. Type in the address bar: `\\<CONTAINER_IP>\Config`
-3. Press Enter
-4. Navigate to `config.yml` and edit with your favorite text editor
-
-**macOS:**
-1. Open Finder
-2. Press `Cmd + K` (or Go → Connect to Server)
-3. Enter: `smb://<CONTAINER_IP>/Config`
-4. Click Connect
-5. Edit `config.yml` in any text editor
-
-**Linux:**
-```bash
-# Mount the share
-sudo mount -t cifs //<CONTAINER_IP>/Config /mnt/frigate -o guest
-
-# Edit config
-nano /mnt/frigate/config.yml
-```
-
-**Share Details:**
-- **Authentication**: Guest access enabled (no password required by default)
-- **Password**: If you configured Samba during installation, you can also authenticate with:
-  - Username: `root`
-  - Password: The root password you set during installation
-- **Permissions**: Full read/write access
-- **User**: All files created as `root` user automatically
-
-</details>
-
 ### File Locations
 
 ```
@@ -238,9 +193,11 @@ pct exec <CT_ID> -- ls -l /dev/dri/renderD128
 # View Frigate logs for hardware acceleration status
 pct exec <CT_ID> -- docker logs frigate 2>&1 | grep -i vaapi
 
-# View GPU usage
+# View GPU usage (run on the Proxmox HOST, not inside the container)
 sudo intel_gpu_top
 ```
+
+> **Note:** Because this script uses an **unprivileged LXC container**, GPU statistics are not accessible from inside the container. Hardware acceleration (VAAPI/QSV/OpenVINO) still works correctly — you can verify it via Frigate logs. Run `intel_gpu_top` on the Proxmox host instead.
 
 ### Example Config with Hardware Acceleration
 
@@ -419,7 +376,7 @@ This project is a personal automation script designed primarily for **Intel iGPU
 
 - **Primary Support**: Hardware detection and setup issues for Intel iGPU configurations.
 - **Experimental Support**: NVIDIA and AMD GPU configurations. These are included as a convenience but often require host-level driver troubleshooting that falls outside the scope of this project.
-- **Out of Scope**: Individual network troubleshooting, remote storage (NFS/SMB) mounting issues, or complex Docker network configurations.
+- **Out of Scope**: Individual network troubleshooting, remote storage (NFS) mounting issues, or complex Docker network configurations.
 
 If you are using non-Intel hardware, please ensure your host-side drivers are fully functional before reporting an issue.
 

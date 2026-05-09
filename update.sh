@@ -210,15 +210,15 @@ echo "Updating container $CT_ID to version $VERSION..."
 
 # update docker-compose.yml inside the container using sed
 # We look for the image: line and replace the tag
-pct exec "$CT_ID" -- bash -c "sed -i 's|image: ghcr.io/blakeblackshear/frigate:.*|image: ghcr.io/blakeblackshear/frigate:$VERSION|' /opt/frigate/docker-compose.yml"
+pct exec "$CT_ID" -- bash -c "sed -i 's|image: ghcr.io/blakeblackshear/frigate:.*|image: ghcr.io/blakeblackshear/frigate:$VERSION|' /opt/frigate/compose.yml"
 # Remove obsolete version line to suppress warnings
-pct exec "$CT_ID" -- bash -c "sed -i '/^version:/d' /opt/frigate/docker-compose.yml"
+pct exec "$CT_ID" -- bash -c "sed -i '/^version:/d' /opt/frigate/compose.yml"
 
 echo "Pulling new image..."
-pct exec "$CT_ID" -- docker compose -f /opt/frigate/docker-compose.yml pull
+pct exec "$CT_ID" -- docker compose -f /opt/frigate/compose.yml pull
 
 echo "Recreating container..."
-pct exec "$CT_ID" -- docker compose -f /opt/frigate/docker-compose.yml up -d
+pct exec "$CT_ID" -- docker compose -f /opt/frigate/compose.yml up -d
 
 
 echo -e "${GREEN}Update complete!${NC}"
