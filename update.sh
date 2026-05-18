@@ -95,55 +95,45 @@ if ! pct status "$CT_ID" | grep -q "running"; then
 fi
 
 # Helper: find latest built dev tag on GHCR
+# Uses curl for all network calls (reliable on Proxmox), python3 only for JSON parsing
 resolve_dev_version() {
     echo "Fetching latest built dev version from GHCR..."
-    VERSION=$(python3 - <<'PYEOF'
-import urllib.request, json, sys
 
-def get_token():
-    url = "https://ghcr.io/token?service=ghcr.io&scope=repository:blakeblackshear/frigate:pull"
-    with urllib.request.urlopen(url) as r:
-        return json.loads(r.read()).get('token', '')
+    # Step 1: Get 10 most recent commit SHAs from the dev branch
+    local SHAS
+    SHAS=$(curl -s -H "User-Agent: Mozilla/5.0" \
+        "https://api.github.com/repos/blakeblackshear/frigate/commits?sha=dev&per_page=10" \
+        | python3 -c "import sys,json; [print(c['sha'][:7]) for c in json.load(sys.stdin)]" 2>/dev/null)
 
-def tag_exists(token, sha):
-    url = f"https://ghcr.io/v2/blakeblackshear/frigate/manifests/{sha}"
-    req = urllib.request.Request(url, method='HEAD')
-    req.add_header('Authorization', f'Bearer {token}')
-    req.add_header('Accept', 'application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json')
-    try:
-        with urllib.request.urlopen(req) as r:
-            return r.status == 200
-    except Exception:
-        return False
+    if [ -z "$SHAS" ]; then
+        error_exit "Could not fetch dev branch commits from GitHub."
+    fi
 
-try:
-    commits_url = "https://api.github.com/repos/blakeblackshear/frigate/commits?sha=dev&per_page=10"
-    req = urllib.request.Request(commits_url)
-    req.add_header('User-Agent', 'Mozilla/5.0')
-    with urllib.request.urlopen(req) as r:
-        commits = json.loads(r.read())
-    shas = [c['sha'][:7] for c in commits]
-except Exception as e:
-    sys.stderr.write(f"Error fetching commits: {e}\n")
-    sys.exit(1)
+    # Step 2: Get a public GHCR read token
+    local TOKEN
+    TOKEN=$(curl -s \
+        "https://ghcr.io/token?service=ghcr.io&scope=repository:blakeblackshear/frigate:pull" \
+        | python3 -c "import sys,json; print(json.load(sys.stdin).get('token',''))" 2>/dev/null)
 
-try:
-    token = get_token()
-except Exception as e:
-    sys.stderr.write(f"Error getting GHCR token: {e}\n")
-    sys.exit(1)
+    if [ -z "$TOKEN" ]; then
+        error_exit "Could not fetch GHCR authentication token."
+    fi
 
-for sha in shas:
-    if tag_exists(token, sha):
-        print(sha)
-        sys.exit(0)
+    # Step 3: Loop through SHAs, find the newest one that's fully built on GHCR
+    local SHA HTTP_CODE
+    for SHA in $SHAS; do
+        HTTP_CODE=$(curl -s -o /dev/null -I -w "%{http_code}" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json" \
+            "https://ghcr.io/v2/blakeblackshear/frigate/manifests/$SHA")
+        if [ "$HTTP_CODE" = "200" ]; then
+            VERSION="$SHA"
+            echo "Resolved dev version: $VERSION"
+            return 0
+        fi
+    done
 
-sys.stderr.write("No built dev tag found among the 10 most recent commits.\n")
-sys.exit(1)
-PYEOF
-    )
-    [ -z "$VERSION" ] && error_exit "Could not resolve a built dev image tag from GHCR."
-    echo "Resolved dev version: $VERSION"
+    error_exit "No built dev tag found among the 10 most recent commits."
 }
 
 # Handle latest/beta/dev keywords
