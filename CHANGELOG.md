@@ -2,6 +2,7 @@
 
 ### Added
 - Added support for installing and updating to Frigate's latest built development branch images directly from GHCR.
+- Added support for AMD ROCm GPU acceleration in the Docker image and LXC device mapping.
 
 ### Changed
 - Converted VLAN, MTU, and Proxmox firewall configuration from interactive onboarding prompts to command-line flag options (`--vlan`, `--mtu`, and `--firewall`), streamlining the default setup flow.
@@ -11,6 +12,7 @@
 - Switched to curl for installer network calls to improve reliability.
 - Expose go2rtc API (1984) and Frigate Auth (8971) ports by default in the generated `compose.yml` and Proxmox firewall rules.
 - Standardized documentation and command references to use `compose.yml` instead of the legacy `docker-compose.yml`.
+- Fixed a crash in AMD and generic VAAPI configurations by defaulting OpenVINO inference to CPU instead of the incompatible GPU.
 
 ## [1.3.0] - 2026-05-09
 

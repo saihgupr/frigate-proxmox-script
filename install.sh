@@ -75,6 +75,8 @@ DETECTED_CPU=""
 DETECTED_GPU="none"
 GPU_TYPES_FOUND=() # Array to store all found GPU types (intel, amd, nvidia)
 SELECTED_GPU_TYPE="none"
+ENABLE_ROCM=false
+ROCM_GFX_VERSION=""
 DETECTED_RENDER_NODES=() # Array to store found render nodes
 SELECTED_RENDER_NODE="/dev/dri/renderD128"
 DETECTED_CORAL="none"
@@ -760,6 +762,22 @@ configure_container() {
         *) FRIGATE_VERSION="stable" ;;
     esac
     
+    # AMD ROCm selection
+    if [ "$SELECTED_GPU_TYPE" = "amd" ]; then
+        echo ""
+        read -p "Enable AMD ROCm support for GPU-accelerated inference/decoding? (y/N): " rocm_choice
+        if [[ "$rocm_choice" =~ ^[Yy]$ ]]; then
+            ENABLE_ROCM=true
+            FRIGATE_VERSION="${FRIGATE_VERSION}-rocm"
+            echo ""
+            echo "AMD ROCm requires specifying or overriding the GPU architecture version in some cases (e.g. '11.0.0' for gfx1103/780M, '11.0.3' for others)."
+            read -p "Enter HSA_OVERRIDE_GFX_VERSION (leave blank to skip): " rocm_gfx_ver
+            if [ -n "$rocm_gfx_ver" ]; then
+                ROCM_GFX_VERSION="$rocm_gfx_ver"
+            fi
+        fi
+    fi
+    
     echo ""
 
     # YOLOv9 model (only for OpenVINO-capable GPUs)
@@ -960,7 +978,11 @@ show_configuration_summary() {
     echo ""
     echo "Frigate Settings:"
     echo "  Docker Image:    ghcr.io/blakeblackshear/frigate:$FRIGATE_VERSION"
-    echo "  HW Accel:        $ENABLE_IGPU ($DETECTED_GPU)"
+    local hw_accel_str="$ENABLE_IGPU ($DETECTED_GPU)"
+    if [ "$ENABLE_ROCM" = true ]; then
+        hw_accel_str="$hw_accel_str with ROCm"
+    fi
+    echo "  HW Accel:        $hw_accel_str"
     if [ "$ENABLE_IGPU" = "yes" ] && [ "$SELECTED_GPU_TYPE" != "nvidia" ]; then
         echo "  Render Node:     $SELECTED_RENDER_NODE"
     fi
@@ -1144,6 +1166,14 @@ configure_igpu_passthrough() {
             echo "" >> "$lxc_conf"
             echo "# Frigate: iGPU Passthrough + AppArmor" >> "$lxc_conf"
             echo "dev${dev_slot}: $SELECTED_RENDER_NODE,gid=$render_gid" >> "$lxc_conf"
+            if [ "$ENABLE_ROCM" = true ] && [ -c "/dev/kfd" ]; then
+                local kfd_slot=$((dev_slot + 1))
+                while grep -q "^dev${kfd_slot}:" "$lxc_conf" 2>/dev/null; do
+                    kfd_slot=$((kfd_slot + 1))
+                done
+                echo "dev${kfd_slot}: /dev/kfd,gid=$render_gid" >> "$lxc_conf"
+                log "  Mapped /dev/kfd to dev${kfd_slot} (gid=$render_gid)"
+            fi
             echo "lxc.apparmor.profile: unconfined" >> "$lxc_conf"
             log_success "iGPU passthrough and AppArmor configured in $lxc_conf"
         else
@@ -1153,6 +1183,19 @@ configure_igpu_passthrough() {
             cat >> "$lxc_conf" << EOF
 lxc.cgroup2.devices.allow: c $dev_major:$dev_minor rwm
 lxc.mount.entry: $SELECTED_RENDER_NODE dev/dri/$(basename "$SELECTED_RENDER_NODE") none bind,optional,create=file
+EOF
+            if [ "$ENABLE_ROCM" = true ] && [ -c "/dev/kfd" ]; then
+                local kfd_major=$(stat -c '%t' /dev/kfd)
+                kfd_major=$((0x$kfd_major))
+                local kfd_minor=$(stat -c '%T' /dev/kfd)
+                kfd_minor=$((0x$kfd_minor))
+                cat >> "$lxc_conf" << EOF
+lxc.cgroup2.devices.allow: c $kfd_major:$kfd_minor rwm
+lxc.mount.entry: /dev/kfd dev/kfd none bind,optional,create=file
+EOF
+                log "  Mapped /dev/kfd using legacy cgroup2 method (Major: $kfd_major, $kfd_minor)"
+            fi
+            cat >> "$lxc_conf" << EOF
 lxc.apparmor.profile: unconfined
 EOF
             if [ "$CT_PRIVILEGED" = "0" ]; then
@@ -1454,6 +1497,10 @@ create_docker_compose() {
               capabilities: [gpu, video]"
         else
             devices_list="      - $SELECTED_RENDER_NODE:$SELECTED_RENDER_NODE"
+            if [ "$ENABLE_ROCM" = true ]; then
+                devices_list="$devices_list
+      - /dev/kfd:/dev/kfd"
+            fi
         fi
     fi
 
@@ -1498,6 +1545,16 @@ $deploy_config"
       - \"$render_gid\""
         fi
 
+        local rocm_env_block=""
+        if [ "$ENABLE_ROCM" = true ]; then
+            if [ -n "$ROCM_GFX_VERSION" ]; then
+                rocm_env_block="      - HSA_OVERRIDE_GFX_VERSION=$ROCM_GFX_VERSION
+"
+            fi
+            rocm_env_block="${rocm_env_block}      # - HIP_VISIBLE_DEVICES=1
+      # - ROCBLAS_TENSILE_LIBPATH=/opt/rocm/lib/rocblas/library"
+        fi
+
         pct exec "$CT_ID" -- bash -c "cat > /opt/frigate/compose.yml" << EOF
 version: "3.9"
 
@@ -1524,6 +1581,7 @@ $device_config
     environment:
       - FRIGATE_RTSP_PASSWORD=$FRIGATE_RTSP_PASSWORD
       - CONFIG_FILE=/config/config.yml
+$rocm_env_block
     cap_add:
       - CAP_PERFMON
     shm_size: "$SHM_SIZE"
@@ -1618,11 +1676,21 @@ create_frigate_config() {
   coral:
     type: edgetpu
     device: pci"
-    elif [ "$SELECTED_GPU_TYPE" = "intel" ] || [ "$SELECTED_GPU_TYPE" = "amd" ] || [ "$SELECTED_GPU_TYPE" = "vaapi" ]; then
+    elif [ "$SELECTED_GPU_TYPE" = "intel" ]; then
         detector_config="detectors:
   ov:
     type: openvino
     device: GPU"
+        if [ "$ENABLE_YOLO_MODEL" = false ]; then
+            detector_config="$detector_config
+    model:
+      path: /openvino-model/ssdlite_mobilenet_v2.xml"
+        fi
+    elif [ "$SELECTED_GPU_TYPE" = "amd" ] || [ "$SELECTED_GPU_TYPE" = "vaapi" ]; then
+        detector_config="detectors:
+  ov:
+    type: openvino
+    device: CPU"
         if [ "$ENABLE_YOLO_MODEL" = false ]; then
             detector_config="$detector_config
     model:
@@ -1857,6 +1925,11 @@ create_container_summary_dashboard() {
     local ip_address
     ip_address=$(pct exec "$CT_ID" -- hostname -I | awk '{print $1}' || echo "<IP_ADDRESS>")
     
+    local gpu_profile="${SELECTED_GPU_TYPE:-None}"
+    if [ "$ENABLE_ROCM" = true ]; then
+        gpu_profile="${gpu_profile} (ROCm)"
+    fi
+
     local coral_line=""
     if [ -n "$DETECTED_CORAL" ] && [ "$DETECTED_CORAL" != "none" ]; then
         coral_line="- Coral Detector: ${DETECTED_CORAL}\n"
@@ -1873,7 +1946,7 @@ create_container_summary_dashboard() {
 | Frigate Auth | https://${ip_address}:${AUTH_PORT:-8971} |
 
 **Hardware Profile**
-- GPU Acceleration: ${SELECTED_GPU_TYPE:-None}
+- GPU Acceleration: ${gpu_profile}
 ${coral_line}- SHM Size: ${SHM_SIZE:-512mb}
 - Resources: ${CT_RAM}MB RAM / ${CT_CORES} CPU Cores
 
