@@ -1780,8 +1780,8 @@ setup_samba() {
 
     # Create a dedicated non-root samba user
     execute_in_container "id frigate &>/dev/null || useradd -M -s /usr/sbin/nologin frigate"
-    execute_in_container "chown -R frigate:frigate /opt/frigate/config /opt/frigate/storage"
-    execute_in_container "chmod -R 750 /opt/frigate/config /opt/frigate/storage"
+    execute_in_container "find /opt/frigate/config /opt/frigate/storage -name 'lost+found' -prune -o -exec chown frigate:frigate {} +"
+    execute_in_container "find /opt/frigate/config /opt/frigate/storage -name 'lost+found' -prune -o -exec chmod 750 {} +"
 
     if [ "$DRY_RUN" = false ]; then
         pct exec "$CT_ID" -- bash -c "printf '%s\n%s\n' '$SAMBA_PASSWORD' '$SAMBA_PASSWORD' | smbpasswd -a -s frigate"

@@ -14,6 +14,7 @@
 - Standardized documentation and command references to use `compose.yml` instead of the legacy `docker-compose.yml`.
 - Improved automatic GPU render node selection by resolving to the first detected render node on the host when only a single node is present.
 - Resolved an EdgeTPU crash by ensuring the OpenVINO model configuration is not generated when a Google Coral TPU is detected.
+- Resolved permission denied issues on the system 'lost+found' directory in Samba share setup when using a separate recordings disk.
 
 ## [1.3.0] - 2026-05-09
 
