@@ -1381,7 +1381,7 @@ start_lxc_container() {
         log "Waiting for container to initialize network..."
         local counter=0
         while [ $counter -lt 30 ]; do
-            if pct exec "$CT_ID" -- ip addr show eth0 | grep -q "inet "; then
+            if pct exec "$CT_ID" -- wget --spider -S ifconfig.io 2>&1 | grep "connected" > /dev/null; then
                 break
             fi
             sleep 1
