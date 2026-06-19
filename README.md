@@ -276,6 +276,13 @@ pct exec <CT_ID> -- ls -l /dev/dri/
 pct exec <CT_ID> -- docker exec frigate vainfo
 ```
 
+### Intel QSV "Can't allocate a surface" or "Cannot allocate memory"
+If you see errors like `[Parsed_vpp_qsv_0] Can't allocate a surface` or `Error while filtering: Cannot allocate memory` in your logs:
+1. **Switch to VAAPI**: For 12th/13th/14th Gen Intel CPUs (including N100), the QSV preset can suffer from FFmpeg surface allocation bugs. Change your `hwaccel_args` in your camera config from `preset-intel-qsv-h264` (or other QSV presets) to `preset-vaapi`.
+2. **Disable HW Accel on sub-streams**: If you are using go2rtc loopbacks, set `hwaccel_args: []` specifically under the `detect` role for the camera to prevent surface pool exhaustion.
+3. **Camera Stream Settings**: For brands like Reolink, use HTTP/FLV streams in `go2rtc` instead of RTSP, as RTSP streams are prone to packet drops that crash the hardware decoder.
+
+
 ### NVIDIA GPU Errors
 If you see `Error running prestart hook #0` or `libnvidia-ml.so.1: cannot open shared object file`:
 

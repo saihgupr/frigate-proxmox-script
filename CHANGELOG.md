@@ -2,6 +2,7 @@
 
 ### Added
 - Added support for installing and updating to Frigate's latest built development branch images directly from GHCR.
+- Added documentation and troubleshooting workarounds for Intel QSV "Can't allocate a surface" hardware acceleration errors on newer Intel CPUs.
 
 ### Changed
 - Converted VLAN, MTU, and Proxmox firewall configuration from interactive onboarding prompts to command-line flag options (`--vlan`, `--mtu`, and `--firewall`), streamlining the default setup flow.
