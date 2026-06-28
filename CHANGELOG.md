@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+### Fixed
+- Improved container network initialization check by verifying actual DNS resolution rather than just checking for a local interface IP.
+
+
 ## [1.4.0] - 2026-06-28
 
 ### Added
