@@ -1871,9 +1871,11 @@ create_container_summary_dashboard() {
 **Quick Access**
 | Service | URL |
 | :--- | :--- |
-| Web UI | http://${ip_address}:${FRIGATE_PORT:-5000} |
+| Web UI & API (Unauthenticated) | http://${ip_address}:${FRIGATE_PORT:-5000} |
+| Web UI & API (Recommended) | https://${ip_address}:${AUTH_PORT:-8971} |
 | go2rtc API | http://${ip_address}:${GO2RTC_PORT:-1984} |
-| Frigate Auth | https://${ip_address}:${AUTH_PORT:-8971} |
+
+*Note: Port ${AUTH_PORT:-8971} is the secure WebUI and API port and is recommended to be used in every case. Port ${FRIGATE_PORT:-5000} is unauthenticated.*
 
 **Hardware Profile**
 - GPU Acceleration: ${SELECTED_GPU_TYPE:-None}
@@ -2028,10 +2030,12 @@ main() {
     local ip_addr
     ip_addr=$(pct exec "$CT_ID" -- ip addr show eth0 | grep "inet " | awk '{print $2}' | cut -d/ -f1 | head -n 1)
     
-    echo "  Frigate Web UI:  http://${ip_addr:-$CT_IP}:$FRIGATE_PORT"
-    echo "  go2rtc API:      http://${ip_addr:-$CT_IP}:$GO2RTC_PORT"
-    echo "  Frigate Auth:    https://${ip_addr:-$CT_IP}:$AUTH_PORT (Requires HTTPS)"
-    echo "  Container ID:    $CT_ID"
+    echo -e "  Web UI & API (Unauthenticated):  http://${ip_addr:-$CT_IP}:$FRIGATE_PORT"
+    echo -e "  Web UI & API (Recommended):      https://${ip_addr:-$CT_IP}:$AUTH_PORT"
+    echo -e "  go2rtc API:                      http://${ip_addr:-$CT_IP}:$GO2RTC_PORT"
+    echo "  Container ID:                    $CT_ID"
+    echo ""
+    echo -e "${YELLOW}NOTE: Port ${AUTH_PORT} is the secure (authenticated/TLS) WebUI and API port and is recommended to be used in every case.${NC}"
     echo ""
     
     if [ "$REBOOT_REQUIRED" = true ]; then
