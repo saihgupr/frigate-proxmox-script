@@ -69,6 +69,13 @@ ROOT_PASSWORD=""
 DO_SNAPSHOT=false
 SNAPSHOT_NAME=""
 
+# SSL/TLS Configuration
+ENABLE_CUSTOM_SSL="no"
+SSL_LOCATION="container"  # host or container
+HOST_SSL_PATH=""
+CT_SSL_PATH="/opt/frigate/certs"
+
+
 
 # Hardware Detection Result Strings
 DETECTED_CPU=""
@@ -850,6 +857,62 @@ configure_container() {
         ENABLE_SSH="no"
     fi
 
+    # Custom SSL certificates prompt (skip if already set via CLI flags)
+    if [ "$ENABLE_CUSTOM_SSL" != "yes" ]; then
+        echo ""
+        read -p "Configure custom SSL/TLS certificates? (y/N): " custom_ssl_choice
+        if [[ "$custom_ssl_choice" =~ ^[Yy]$ ]]; then
+            ENABLE_CUSTOM_SSL="yes"
+            echo ""
+            echo "Select certificate location:"
+            echo "  1) Proxmox host (certificates are mounted from the host into the container)"
+            echo "  2) LXC container (certificates are managed directly inside the container)"
+            while true; do
+                read -p "Select location [1-2] (default: 1): " ssl_loc_choice
+                ssl_loc_choice=${ssl_loc_choice:-1}
+                if [ "$ssl_loc_choice" = "1" ]; then
+                    SSL_LOCATION="host"
+                    break
+                elif [ "$ssl_loc_choice" = "2" ]; then
+                    SSL_LOCATION="container"
+                    break
+                else
+                    log_error "Invalid selection"
+                fi
+            done
+            
+            echo ""
+            if [ "$SSL_LOCATION" = "host" ]; then
+                while true; do
+                    read -p "Enter absolute path to certificates directory on the Proxmox host: " HOST_SSL_PATH
+                    if [ -z "$HOST_SSL_PATH" ]; then
+                        log_error "Path cannot be empty!"
+                        continue
+                    fi
+                    if [ ! -d "$HOST_SSL_PATH" ]; then
+                        log_error "Directory '$HOST_SSL_PATH' does not exist on the Proxmox host!"
+                        continue
+                    fi
+                    if [ ! -f "$HOST_SSL_PATH/privkey.pem" ] || [ ! -f "$HOST_SSL_PATH/fullchain.pem" ]; then
+                        log_warn "Warning: '$HOST_SSL_PATH' does not seem to contain both 'privkey.pem' and 'fullchain.pem'."
+                        read -p "Proceed anyway? (y/N): " proceed_anyway
+                        if [[ "$proceed_anyway" =~ ^[Yy]$ ]]; then
+                            break
+                        else
+                            continue
+                        fi
+                    fi
+                    break
+                done
+                CT_SSL_PATH="/opt/frigate/certs"
+            else
+                read -p "Enter absolute path to certificates directory inside the LXC container (default: /opt/frigate/certs): " CT_SSL_PATH
+                CT_SSL_PATH="${CT_SSL_PATH:-/opt/frigate/certs}"
+            fi
+            log_success "Custom SSL configured: location=$SSL_LOCATION, path=${HOST_SSL_PATH:-$CT_SSL_PATH}"
+        fi
+    fi
+
     # Container Security Level (Privileged vs Unprivileged)
     echo ""
     log_step "Container Security"
@@ -981,6 +1044,15 @@ show_configuration_summary() {
         echo "  Samba:           Enabled (user: frigate, shares: Config + Storage)"
     fi
     echo "  Firewall:        $ENABLE_FIREWALL"
+    if [ "$ENABLE_CUSTOM_SSL" = "yes" ]; then
+        if [ "$SSL_LOCATION" = "host" ]; then
+            echo "  Custom SSL:      Enabled (Host path: $HOST_SSL_PATH)"
+        else
+            echo "  Custom SSL:      Enabled (Container path: $CT_SSL_PATH)"
+        fi
+    else
+        echo "  Custom SSL:      Disabled (using self-signed certs)"
+    fi
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
@@ -1084,6 +1156,32 @@ create_lxc_container() {
     fi
 }
 
+configure_ssl_mount() {
+    if [ "$ENABLE_CUSTOM_SSL" != "yes" ] || [ "$SSL_LOCATION" != "host" ]; then
+        return
+    fi
+    
+    log_step "Configuring custom SSL host mount point..."
+    
+    local lxc_conf="/etc/pve/lxc/${CT_ID}.conf"
+    
+    if [ "$DRY_RUN" = false ]; then
+        # Find next mount point ID
+        local mp_id=0
+        while grep -q "^mp$mp_id:" "$lxc_conf" 2>/dev/null; do
+            mp_id=$((mp_id + 1))
+        done
+        
+        log "Mapping host directory $HOST_SSL_PATH to container path $CT_SSL_PATH (mp$mp_id)..."
+        echo "" >> "$lxc_conf"
+        echo "# Frigate: Custom SSL Host mount" >> "$lxc_conf"
+        echo "mp${mp_id}: $HOST_SSL_PATH,mp=$CT_SSL_PATH,ro=1" >> "$lxc_conf"
+        log_success "SSL host directory mapped successfully in $lxc_conf"
+    else
+        log_dry_run "Add mount point mpX: $HOST_SSL_PATH,mp=$CT_SSL_PATH,ro=1 to $lxc_conf"
+    fi
+}
+
 configure_lxc_passthrough() {
     log_step "Configuring hardware passthrough..."
     
@@ -1103,6 +1201,9 @@ configure_lxc_passthrough() {
         if [ "$DETECTED_CORAL" = "PCIe" ]; then
             configure_coral_pcie_passthrough
         fi
+        
+        # Custom SSL Mount
+        configure_ssl_mount
         
         log_success "Passthrough configured"
     fi
@@ -1436,6 +1537,10 @@ create_frigate_directories() {
     execute_in_container "mkdir -p /opt/frigate/config"
     execute_in_container "mkdir -p /opt/frigate/storage"
     
+    if [ "$ENABLE_CUSTOM_SSL" = "yes" ] && [ "$SSL_LOCATION" = "container" ]; then
+        execute_in_container "mkdir -p $CT_SSL_PATH"
+    fi
+    
     log_success "Directories created"
 }
 
@@ -1501,6 +1606,20 @@ $deploy_config"
       - \"$render_gid\""
         fi
 
+        local volumes_list="      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - ./config:/config
+      - ./storage:/media/frigate"
+        if [ "$ENABLE_CUSTOM_SSL" = "yes" ]; then
+            volumes_list="$volumes_list
+      - $CT_SSL_PATH:/etc/letsencrypt/live/frigate:ro"
+        fi
+        volumes_list="$volumes_list
+      - type: tmpfs
+        target: /tmp/cache
+        tmpfs:
+          size: 1000000000"
+
         pct exec "$CT_ID" -- bash -c "cat > /opt/frigate/compose.yml" << EOF
 version: "3.9"
 
@@ -1511,14 +1630,7 @@ services:
     stop_grace_period: 30s
     image: ghcr.io/blakeblackshear/frigate:$FRIGATE_VERSION
     volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - ./config:/config
-      - ./storage:/media/frigate
-      - type: tmpfs
-        target: /tmp/cache
-        tmpfs:
-          size: 1000000000
+$volumes_list
     ports:
       - "$FRIGATE_PORT:$FRIGATE_PORT"
       - "$GO2RTC_PORT:$GO2RTC_PORT"
@@ -1975,6 +2087,8 @@ show_help() {
     echo "    --vlan TAG             Specify a VLAN tag for the container network (1-4094)"
     echo "    --mtu MTU              Specify an MTU for the container network (576-9000)"
     echo "    --firewall             Enable Proxmox firewall on container"
+    echo "    --ssl-host PATH        Enable custom SSL by mounting certificates from PATH on the host"
+    echo "    --ssl-container PATH   Enable custom SSL by pointing to PATH inside the LXC container"
 }
 
 main() {
@@ -2034,6 +2148,26 @@ main() {
             --no-firewall|--disable-firewall)
                 ENABLE_FIREWALL="no"
                 shift
+                ;;
+            --ssl-host)
+                if [[ -z "${2:-}" || "$2" =~ ^- ]]; then
+                    log_error "Error: --ssl-host requires a path"
+                    exit 1
+                fi
+                ENABLE_CUSTOM_SSL="yes"
+                SSL_LOCATION="host"
+                HOST_SSL_PATH="$2"
+                shift 2
+                ;;
+            --ssl-container)
+                if [[ -z "${2:-}" || "$2" =~ ^- ]]; then
+                    log_error "Error: --ssl-container requires a path"
+                    exit 1
+                fi
+                ENABLE_CUSTOM_SSL="yes"
+                SSL_LOCATION="container"
+                CT_SSL_PATH="$2"
+                shift 2
                 ;;
             *)
                 log_error "Unknown option: $1"
@@ -2097,6 +2231,15 @@ main() {
     echo ""
     echo -e "${YELLOW}NOTE: Port ${AUTH_PORT} is the secure (authenticated/TLS) WebUI and API port and is recommended to be used in every case.${NC}"
     echo ""
+    
+    if [ "$ENABLE_CUSTOM_SSL" = "yes" ] && [ "$SSL_LOCATION" = "container" ]; then
+        echo -e "${YELLOW}[IMPORTANT]${NC} Custom SSL certificates inside the LXC container were enabled."
+        echo -e "  Please copy your 'privkey.pem' and 'fullchain.pem' files to the container path:"
+        echo -e "    ${CT_SSL_PATH}"
+        echo -e "  And then restart the Frigate container:"
+        echo -e "    pct exec $CT_ID -- docker compose -f /opt/frigate/compose.yml restart"
+        echo ""
+    fi
     
     if [ "$REBOOT_REQUIRED" = true ]; then
         echo -e "${YELLOW}[IMPORTANT]${NC} A reboot of the Proxmox HOST is recommended to"

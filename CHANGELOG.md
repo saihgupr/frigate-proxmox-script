@@ -2,6 +2,7 @@
 
 ### Added
 - Added automatic detection and interactive auto-recovery for the containerd CVE-2025-52881 AppArmor conflict (`reopen fd 8: permission denied`) during container startup.
+- Added first-class support for configuring custom SSL/TLS certificates during installation, supporting both Proxmox host-mounted directory paths (automatic LXC bind-mount mapping) and container-managed paths.
 
 ### Fixed
 - Improved container network initialization check by verifying actual DNS resolution rather than just checking for a local interface IP.

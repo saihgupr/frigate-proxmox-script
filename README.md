@@ -77,6 +77,8 @@ These options allow for automated or specialized network configurations:
 | `--vlan TAG`          | Specify a VLAN tag for the container network (1-4094) |
 | `--mtu MTU`           | Specify an MTU for the container network (576-9000) |
 | `--firewall`          | Enable Proxmox firewall on the container (opens ports 5000, 1984, and 8971) |
+| `--ssl-host PATH`     | Configure custom SSL by mounting certificates from PATH on the host |
+| `--ssl-container PATH`| Configure custom SSL by pointing to PATH inside the LXC container |
 
 <details>
 <summary><h2>Configuration Options</h2></summary>
@@ -100,6 +102,28 @@ The script will prompt you for:
 </details>
 
 ## Post-Installation
+
+<details>
+<summary><h3>Configuring Custom SSL/TLS Certificates</h3></summary>
+
+By default, Frigate uses an integrated self-signed certificate for the authenticated HTTPS port (`8971`). If you configured custom SSL/TLS certificates during installation, follow these details:
+
+#### Option A: Host-managed (Recommended)
+If you pointed the installer to a certificates directory on the Proxmox host (e.g. `/etc/letsencrypt/live/domain.com`), the script automatically bind-mounts it to the LXC container at `/opt/frigate/certs` (read-only). 
+* Any certificate renewals on your Proxmox host will automatically reflect inside the container.
+* Frigate checks the certificates and reloads NGINX automatically when they change.
+
+#### Option B: Container-managed
+If you chose to manage certificates inside the container:
+1. Ensure your certificates (`privkey.pem` and `fullchain.pem`) are copied into the LXC container directory (default: `/opt/frigate/certs`).
+2. Restart the Frigate container:
+   ```bash
+   pct exec <CT_ID> -- docker compose -f /opt/frigate/compose.yml restart
+   ```
+
+*Note: Custom certificates must contain `privkey.pem` and `fullchain.pem` and must not be password protected.*
+
+</details>
 
 <details>
 <summary><h3>Updating Existing Installations</h3></summary>
