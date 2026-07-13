@@ -1676,11 +1676,71 @@ EOF
 start_frigate() {
     log_step "Starting Frigate container..."
     
-    execute_in_container "cd /opt/frigate && docker compose up -d"
-    
     if [ "$DRY_RUN" = false ]; then
+        local log_temp="/tmp/frigate-start.log"
+        local exit_code=0
+        
+        log "Running docker compose up..."
+        # Run pct exec, redirect output to temp file, and capture exit status
+        pct exec "$CT_ID" -- bash -c "cd /opt/frigate && docker compose up -d" > "$log_temp" 2>&1 || exit_code=$?
+        
+        # Append temp log to main log file
+        cat "$log_temp" >> "$LOG_FILE"
+        
+        # Print output to screen
+        cat "$log_temp"
+        
+        if [ "$exit_code" -ne 0 ]; then
+            if grep -q "reopen fd 8: permission denied" "$log_temp" || grep -q "ip_unprivileged_port_start" "$log_temp"; then
+                log_warn "Detected AppArmor / containerd conflict (reopen fd 8: permission denied)."
+                log_warn "This usually occurs on older Proxmox hosts running newer containerd.io versions."
+                echo ""
+                echo -e "${YELLOW}To resolve this, you have two options:${NC}"
+                echo -e "  1. [Recommended] Update Proxmox VE (run: apt update && apt dist-upgrade on the host)"
+                echo -e "  2. [Workaround] Configure the LXC container to run with an unconfined AppArmor profile"
+                echo ""
+                
+                if [ -t 0 ]; then
+                    read -p "Would you like to automatically apply the AppArmor unconfined workaround? (y/N): " -n 1 -r
+                    echo
+                    if [[ $REPLY =~ ^[Yy]$ ]]; then
+                        log "Applying AppArmor unconfined workaround to /etc/pve/lxc/${CT_ID}.conf..."
+                        local lxc_conf="/etc/pve/lxc/${CT_ID}.conf"
+                        echo "" >> "$lxc_conf"
+                        echo "# Workaround for containerd CVE-2025-52881 AppArmor issue" >> "$lxc_conf"
+                        echo "lxc.apparmor.profile: unconfined" >> "$lxc_conf"
+                        echo "lxc.mount.entry: /dev/null sys/module/apparmor/parameters/enabled none bind 0 0" >> "$lxc_conf"
+                        
+                        log "Restarting container $CT_ID to apply configuration..."
+                        pct reboot "$CT_ID"
+                        
+                        log "Waiting for container to reboot..."
+                        sleep 10
+                        
+                        log "Retrying Frigate container startup..."
+                        if pct exec "$CT_ID" -- bash -c "cd /opt/frigate && docker compose up -d" 2>&1 | tee -a "$LOG_FILE"; then
+                            log_success "Frigate started successfully after applying AppArmor workaround!"
+                            rm -f "$log_temp"
+                            return 0
+                        else
+                            log_error "Frigate failed to start even with the AppArmor workaround applied."
+                        fi
+                    fi
+                else
+                    log_warn "Running in non-interactive mode; skipping automatic workaround application."
+                fi
+            fi
+            
+            rm -f "$log_temp"
+            error_exit "Frigate failed to start. Check the logs above."
+        fi
+        
+        rm -f "$log_temp"
+        
         log "Waiting for Frigate to start..."
         sleep 10
+    else
+        log_dry_run "cd /opt/frigate && docker compose up -d"
     fi
     
     log_success "Frigate started"

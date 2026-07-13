@@ -255,6 +255,25 @@ pct status <CT_ID>
 pct exec <CT_ID> -- journalctl -xe
 ```
 
+### Docker container start up fails (reopen fd 8: permission denied)
+If the script fails to start Frigate and you see the following in your container logs or install output:
+```
+unable to start container process: error during container init: open sysctl net.ipv4.ip_unprivileged_port_start file: reopen fd 8: permission denied
+```
+This is a known issue caused by a security patch in `containerd.io` (addressing CVE-2025-52881) running inside unprivileged LXC containers on older Proxmox hosts.
+
+**Solutions:**
+1. **Recommended:** Fully update your Proxmox host packages and reboot:
+   ```bash
+   apt update && apt dist-upgrade
+   ```
+2. **Workaround:** If you cannot update the host, add the following lines manually to `/etc/pve/lxc/<CT_ID>.conf` on the Proxmox host to run the container unconfined, then reboot the LXC container:
+   ```ini
+   lxc.apparmor.profile: unconfined
+   lxc.mount.entry: /dev/null sys/module/apparmor/parameters/enabled none bind 0 0
+   ```
+   *(Note: The install script will offer to apply this workaround automatically if it detects this specific failure during installation).*
+
 ### Frigate not accessible
 ```bash
 # Check if Docker container is running

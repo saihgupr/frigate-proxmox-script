@@ -1,5 +1,8 @@
 ## [Unreleased]
 
+### Added
+- Added automatic detection and interactive auto-recovery for the containerd CVE-2025-52881 AppArmor conflict (`reopen fd 8: permission denied`) during container startup.
+
 ### Fixed
 - Improved container network initialization check by verifying actual DNS resolution rather than just checking for a local interface IP.
 
