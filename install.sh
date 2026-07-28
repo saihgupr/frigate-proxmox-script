@@ -779,6 +779,10 @@ configure_container() {
         read -r yolo_choice
         if [[ "$yolo_choice" =~ ^[Yy]$ ]]; then
             ENABLE_YOLO_MODEL=true
+            if [ "$CT_DISK" -lt 16 ]; then
+                log_warn "YOLOv9 model export requires additional disk space. Increasing container rootfs disk size from ${CT_DISK}GB to 16GB."
+                CT_DISK=16
+            fi
             echo ""
             echo "Model size (larger = more accurate, slower on iGPU):"
             echo " 1) t - Tiny    (fastest)"
@@ -1792,6 +1796,14 @@ start_frigate() {
         local log_temp="/tmp/frigate-start.log"
         local exit_code=0
         
+        if [ "$ENABLE_CUSTOM_SSL" = "yes" ] && [ "$SSL_LOCATION" = "container" ]; then
+            if ! pct exec "$CT_ID" -- test -f "${CT_SSL_PATH}/privkey.pem" 2>/dev/null; then
+                log_warn "Custom SSL is enabled, but certificate files (privkey.pem / fullchain.pem) are not yet present in ${CT_SSL_PATH}."
+                log_warn "Skipping immediate Docker startup to prevent container crash loops until certificates are uploaded."
+                return 0
+            fi
+        fi
+
         log "Running docker compose up..."
         # Run pct exec, redirect output to temp file, and capture exit status
         pct exec "$CT_ID" -- bash -c "cd /opt/frigate && docker compose up -d" > "$log_temp" 2>&1 || exit_code=$?
