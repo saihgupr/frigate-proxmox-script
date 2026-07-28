@@ -1204,8 +1204,39 @@ configure_lxc_passthrough() {
         
         # Custom SSL Mount
         configure_ssl_mount
+
+        # Shared Memory (dev/shm) and Cache tmpfs Mounts
+        configure_shm_mounts
         
-        log_success "Passthrough configured"
+        log_success "Passthrough and mounts configured"
+    fi
+}
+
+configure_shm_mounts() {
+    log_step "Configuring shared memory (shm) & cache tmpfs mounts for LXC..."
+    local lxc_conf="/etc/pve/lxc/${CT_ID}.conf"
+    
+    # Format SHM size for tmpfs entry (e.g. 256mb -> 256M, 512mb -> 512M, 1g -> 1024M)
+    local shm_tmpfs_size="256M"
+    if [[ "$SHM_SIZE" =~ ([0-9]+)[mMkKgG]? ]]; then
+        local num="${BASH_REMATCH[1]}"
+        if [[ "$SHM_SIZE" =~ [gG] ]]; then
+            shm_tmpfs_size="$((num * 1024))M"
+        else
+            shm_tmpfs_size="${num}M"
+        fi
+    fi
+
+    if [ "$DRY_RUN" = false ]; then
+        if ! grep -q "dev/shm" "$lxc_conf" 2>/dev/null; then
+            echo "" >> "$lxc_conf"
+            echo "# Frigate: Shared Memory (SHM) & Cache tmpfs Mounts" >> "$lxc_conf"
+            echo "lxc.mount.entry: tmpfs dev/shm tmpfs size=${shm_tmpfs_size},nosuid,nodev,noexec,create=dir 0 0" >> "$lxc_conf"
+            echo "lxc.mount.entry: tmpfs tmp/cache tmpfs size=128M,nosuid,nodev,noexec,create=dir 0 0" >> "$lxc_conf"
+            log_success "SHM (${shm_tmpfs_size}) and cache tmpfs configured in $lxc_conf"
+        fi
+    else
+        log_dry_run "Add SHM (${shm_tmpfs_size}) and cache tmpfs mounts to $lxc_conf"
     fi
 }
 
