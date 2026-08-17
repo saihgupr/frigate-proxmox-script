@@ -1,1 +1,1 @@
-/tmp/install_original.sh
+/tmp/install.sh
