@@ -1,3 +1,1 @@
-#!/usr/bin/env bash
-
-# Content will be read from file
+/tmp/install_original.sh
