@@ -39,6 +39,8 @@ echo "--------------------------"
 # Parse arguments
 CT_ID=""
 VERSION=""
+FRIGATE_DIR=""
+COMPOSE_FILE=""
 DO_SNAPSHOT=false
 SNAPSHOT_NAME=""
 DO_PRUNE=false
@@ -65,6 +67,16 @@ while [[ $# -gt 0 ]]; do
             ;;
         -p|--prune)
             DO_PRUNE=true
+            shift
+            ;;
+        --dir)
+            FRIGATE_DIR="$2"
+            [ -n "$FRIGATE_DIR" ] || error_exit "--dir requires an install path, for example /home/frigate."
+            shift 2
+            ;;
+        --dir=*)
+            FRIGATE_DIR="${1#*=}"
+            [ -n "$FRIGATE_DIR" ] || error_exit "--dir requires an install path, for example /home/frigate."
             shift
             ;;
         *)
@@ -255,29 +267,73 @@ fi
 
 check_container_space
 
-# Migrate legacy docker-compose.yml to compose.yml if needed
-if pct exec "$CT_ID" -- bash -c '[ -f /opt/frigate/docker-compose.yml ] && [ ! -f /opt/frigate/compose.yml ]'; then
-    log_info "Legacy docker-compose.yml detected. Migrating to compose.yml..."
-    pct exec "$CT_ID" -- mv /opt/frigate/docker-compose.yml /opt/frigate/compose.yml
+log_step "Locating Frigate compose file in container $CT_ID..."
+if [ -n "$FRIGATE_DIR" ] && [[ ! "$FRIGATE_DIR" =~ ^/[A-Za-z0-9._/-]+$ ]]; then
+    error_exit "Invalid --dir path '$FRIGATE_DIR'. Use an absolute path such as /home/frigate."
 fi
 
-if ! pct exec "$CT_ID" -- bash -c '[ -f /opt/frigate/compose.yml ]'; then
-    error_exit "Could not find compose.yml in /opt/frigate/ inside container $CT_ID."
+search_dirs=""
+if [ -n "$FRIGATE_DIR" ]; then
+    search_dirs="$FRIGATE_DIR"
+else
+    wd=$(pct exec "$CT_ID" -- docker inspect frigate --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' 2>/dev/null || true)
+    if [ -n "$wd" ] && [ "$wd" != "<no value>" ]; then
+        search_dirs="$wd"
+    fi
+    search_dirs="$search_dirs /opt/frigate /home/frigate /root/frigate /srv/frigate /mnt/frigate"
+fi
+
+for dir in $search_dirs; do
+    dir="${dir%/}"
+    for name in compose.yml compose.yaml docker-compose.yml docker-compose.yaml; do
+        if ! pct exec "$CT_ID" -- test -f "$dir/$name"; then
+            continue
+        fi
+        COMPOSE_FILE="$dir/$name"
+        break
+    done
+    if [ -n "$COMPOSE_FILE" ]; then
+        break
+    fi
+done
+
+if [ -z "$COMPOSE_FILE" ] && [ -z "$FRIGATE_DIR" ]; then
+    COMPOSE_FILE=$(pct exec "$CT_ID" -- bash -c 'find /home /opt /root /srv /mnt -maxdepth 4 \( -name compose.yml -o -name compose.yaml -o -name docker-compose.yml -o -name docker-compose.yaml \) -print 2>/dev/null | while IFS= read -r f; do grep -q blakeblackshear/frigate "$f" && printf "%s\n" "$f" && break; done' || true)
+fi
+
+if [ -z "$COMPOSE_FILE" ]; then
+    if [ -n "$FRIGATE_DIR" ]; then
+        error_exit "Could not find compose.yml, compose.yaml, docker-compose.yml, or docker-compose.yaml in $FRIGATE_DIR inside container $CT_ID."
+    fi
+    error_exit "Could not find a Frigate compose file inside container $CT_ID. Searched /opt/frigate, /home/frigate, and other common paths. Re-run with --dir /path/to/install if Frigate lives somewhere else."
+fi
+log_info "Found Frigate compose file: $COMPOSE_FILE"
+
+if [ "$COMPOSE_FILE" = "/opt/frigate/docker-compose.yml" ] && pct exec "$CT_ID" -- bash -c '[ ! -f /opt/frigate/compose.yml ]'; then
+    log_info "Legacy docker-compose.yml detected. Migrating to compose.yml..."
+    pct exec "$CT_ID" -- mv /opt/frigate/docker-compose.yml /opt/frigate/compose.yml
+    COMPOSE_FILE="/opt/frigate/compose.yml"
 fi
 
 echo "Updating container $CT_ID to version $VERSION..."
+echo "Compose file: $COMPOSE_FILE"
 
-# update docker-compose.yml inside the container using sed
-# We look for the image: line and replace the tag
-pct exec "$CT_ID" -- bash -c "sed -i 's|image: ghcr.io/blakeblackshear/frigate:.*|image: ghcr.io/blakeblackshear/frigate:$VERSION|' /opt/frigate/compose.yml"
-# Remove obsolete version line to suppress warnings
-pct exec "$CT_ID" -- bash -c "sed -i '/^version:/d' /opt/frigate/compose.yml"
+sed_version=$(printf '%s' "$VERSION" | sed -e 's/[\\&|]/\\&/g')
+pct exec "$CT_ID" -- sed -E -i "s|(image:[[:space:]]*[\"']?)(ghcr.io/)?blakeblackshear/frigate:[^\"'[:space:]]*|\1ghcr.io/blakeblackshear/frigate:${sed_version}|" "$COMPOSE_FILE"
+pct exec "$CT_ID" -- sed -i '/^version:/d' "$COMPOSE_FILE"
+
+if ! pct exec "$CT_ID" -- grep -F -q "blakeblackshear/frigate:${VERSION}" "$COMPOSE_FILE"; then
+    error_exit "Could not update the Frigate image tag in $COMPOSE_FILE. The image line was not in a recognized format."
+fi
+
+compose_dir=$(dirname "$COMPOSE_FILE")
+compose_base=$(basename "$COMPOSE_FILE")
 
 echo "Pulling new image..."
-pct exec "$CT_ID" -- docker compose -f /opt/frigate/compose.yml pull
+pct exec "$CT_ID" -- bash -c 'cd "$1" && docker compose -f "$2" pull' bash "$compose_dir" "$compose_base"
 
 echo "Recreating container..."
-pct exec "$CT_ID" -- docker compose -f /opt/frigate/compose.yml up -d
+pct exec "$CT_ID" -- bash -c 'cd "$1" && docker compose -f "$2" up -d' bash "$compose_dir" "$compose_base"
 
 
 echo -e "${GREEN}Update complete!${NC}"
