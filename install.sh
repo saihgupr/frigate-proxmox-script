@@ -1336,25 +1336,56 @@ configure_nvidia_passthrough() {
     fi
 
     if [ "$DRY_RUN" = false ]; then
-        if [ "$pve_82_plus" = true ]; then
-            # Modern Proxmox 8.2+ way
-            local nvidia_devs=(
-                "/dev/nvidia0"
-                "/dev/nvidiactl"
-                "/dev/nvidia-modeset"
-                "/dev/nvidia-uvm"
-                "/dev/nvidia-uvm-tools"
-            )
-            
+        local nvidia_devs=(
+            "/dev/nvidia0"
+            "/dev/nvidiactl"
+            "/dev/nvidia-modeset"
+            "/dev/nvidia-uvm"
+            "/dev/nvidia-uvm-tools"
+        )
+        local nvidia_cap_dir="/dev/nvidia-caps"
+        local nvidia_cap_devs=()
+
+        # Capability devices are driver-dependent, so discover them instead of
+        # assuming fixed names or major numbers.
+        if [ -d "$nvidia_cap_dir" ]; then
+            while IFS= read -r cap_dev; do
+                [ -n "$cap_dev" ] && nvidia_cap_devs+=("$cap_dev")
+            done < <(find "$nvidia_cap_dir" -mindepth 1 -maxdepth 1 -type c -print 2>/dev/null || true)
+        fi
+
+        if ! grep -Fq "# Frigate: NVIDIA GPU Passthrough" "$lxc_conf"; then
             echo "" >> "$lxc_conf"
             echo "# Frigate: NVIDIA GPU Passthrough + AppArmor" >> "$lxc_conf"
+        fi
+        if ! grep -Fq "lxc.apparmor.profile: unconfined" "$lxc_conf"; then
             echo "lxc.apparmor.profile: unconfined" >> "$lxc_conf"
-            
+        fi
+
+        # Add cgroup permissions using the actual device majors. This covers
+        # driver versions that allocate different majors for UVM and nvidia-caps.
+        local all_nvidia_devs=("${nvidia_devs[@]}" "${nvidia_cap_devs[@]}")
+        for dev in "${all_nvidia_devs[@]}"; do
+            if [ -c "$dev" ]; then
+                local major_hex
+                major_hex=$(stat -c '%t' "$dev" 2>/dev/null || true)
+                if [[ "$major_hex" =~ ^[0-9a-fA-F]+$ ]]; then
+                    local dev_major=$((16#$major_hex))
+                    local cgroup_rule="lxc.cgroup2.devices.allow: c $dev_major:* rwm"
+                    if ! grep -Fq "$cgroup_rule" "$lxc_conf"; then
+                        echo "$cgroup_rule" >> "$lxc_conf"
+                    fi
+                fi
+            fi
+        done
+
+        if [ "$pve_82_plus" = true ]; then
+            # Modern Proxmox 8.2+ device mapping.
             for dev in "${nvidia_devs[@]}"; do
-                if [ -c "$dev" ]; then
+                if [ -c "$dev" ] && ! grep -Fq ": $dev," "$lxc_conf"; then
                     local dev_gid
                     dev_gid=$(stat -c '%g' "$dev" 2>/dev/null || echo "0")
-                    
+
                     local dev_slot=0
                     while grep -q "^dev${dev_slot}:" "$lxc_conf" 2>/dev/null; do
                         dev_slot=$((dev_slot + 1))
@@ -1363,30 +1394,32 @@ configure_nvidia_passthrough() {
                     log "  Mapped $dev to dev${dev_slot} (gid=$dev_gid)"
                 fi
             done
-            log_success "NVIDIA GPU device nodes configured using modern dev method"
         else
-            # Legacy way
-            # Device Nodes
-            if ! grep -q "nvidia" "$lxc_conf"; then
-                # Get major numbers for devices (Resilience for Issue #30)
-                local nvidia_major=$(ls -l /dev/nvidiactl 2>/dev/null | awk '{print $5}' | cut -d, -f1 || echo "195")
-                local uvm_major=$(ls -l /dev/nvidia-uvm 2>/dev/null | awk '{print $5}' | cut -d, -f1 || echo "511")
-                
-                cat >> "$lxc_conf" << EOF
-
-# Frigate: NVIDIA GPU Passthrough + AppArmor
-lxc.apparmor.profile: unconfined
-lxc.cgroup2.devices.allow: c $nvidia_major:* rwm
-lxc.cgroup2.devices.allow: c $uvm_major:* rwm
-lxc.mount.entry: /dev/nvidia0 dev/nvidia0 none bind,optional,create=file
-lxc.mount.entry: /dev/nvidiactl dev/nvidiactl none bind,optional,create=file
-lxc.mount.entry: /dev/nvidia-modeset dev/nvidia-modeset none bind,optional,create=file
-lxc.mount.entry: /dev/nvidia-uvm dev/nvidia-uvm none bind,optional,create=file
-lxc.mount.entry: /dev/nvidia-uvm-tools dev/nvidia-uvm-tools none bind,optional,create=file
-EOF
-                log_success "NVIDIA GPU device nodes configured in $lxc_conf (Major: $nvidia_major, $uvm_major)"
-            fi
+            # Legacy Proxmox device mapping.
+            for dev in "${nvidia_devs[@]}"; do
+                if [ -c "$dev" ]; then
+                    local target_path="${dev#/}"
+                    if ! grep -Fq "lxc.mount.entry: $dev " "$lxc_conf"; then
+                        echo "lxc.mount.entry: $dev $target_path none bind,optional,create=file" >> "$lxc_conf"
+                    fi
+                fi
+            done
         fi
+
+        # nvidia-caps is needed by some NVIDIA video paths, including NVENC.
+        if [ -d "$nvidia_cap_dir" ] && ! grep -Fq "lxc.mount.entry: $nvidia_cap_dir " "$lxc_conf"; then
+            echo "lxc.mount.entry: $nvidia_cap_dir dev/nvidia-caps none bind,optional,create=dir" >> "$lxc_conf"
+            log "  Mapped $nvidia_cap_dir"
+        fi
+        for cap_dev in "${nvidia_cap_devs[@]}"; do
+            local cap_target="${cap_dev#/}"
+            if ! grep -Fq "lxc.mount.entry: $cap_dev " "$lxc_conf"; then
+                echo "lxc.mount.entry: $cap_dev $cap_target none bind,optional,create=file" >> "$lxc_conf"
+                log "  Mapped $cap_dev"
+            fi
+        done
+
+        log_success "NVIDIA GPU device nodes and capability devices configured"
 
         # Library Mapping (Resilience for Issue #30)
         log "Mapping NVIDIA libraries to container..."
