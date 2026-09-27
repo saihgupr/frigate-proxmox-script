@@ -283,10 +283,22 @@ else
     search_dirs="$search_dirs /opt/frigate /home/frigate /root/frigate /srv/frigate /mnt/frigate"
 fi
 
+FRIGATE_IMAGE_RE="^[[:space:]]*image:[[:space:]]*[\"']?(ghcr\.io/)?blakeblackshear/frigate:"
+
+is_frigate_compose() {
+    pct exec "$CT_ID" -- grep -E -q "$FRIGATE_IMAGE_RE" "$1" 2>/dev/null
+}
+
+skipped_files=""
 for dir in $search_dirs; do
     dir="${dir%/}"
     for name in compose.yml compose.yaml docker-compose.yml docker-compose.yaml; do
         if ! pct exec "$CT_ID" -- test -f "$dir/$name"; then
+            continue
+        fi
+        if ! is_frigate_compose "$dir/$name"; then
+            log_info "Skipping $dir/$name (no blakeblackshear/frigate image found)"
+            skipped_files="$skipped_files $dir/$name"
             continue
         fi
         COMPOSE_FILE="$dir/$name"
@@ -298,11 +310,14 @@ for dir in $search_dirs; do
 done
 
 if [ -z "$COMPOSE_FILE" ] && [ -z "$FRIGATE_DIR" ]; then
-    COMPOSE_FILE=$(pct exec "$CT_ID" -- bash -c 'find /home /opt /root /srv /mnt -maxdepth 4 \( -name compose.yml -o -name compose.yaml -o -name docker-compose.yml -o -name docker-compose.yaml \) -print 2>/dev/null | while IFS= read -r f; do grep -q blakeblackshear/frigate "$f" && printf "%s\n" "$f" && break; done' || true)
+    COMPOSE_FILE=$(pct exec "$CT_ID" -- bash -c 'find /home /opt /root /srv /mnt -maxdepth 4 \( -name compose.yml -o -name compose.yaml -o -name docker-compose.yml -o -name docker-compose.yaml \) -print 2>/dev/null | while IFS= read -r f; do grep -E -q "$1" "$f" && printf "%s\n" "$f" && break; done' bash "$FRIGATE_IMAGE_RE" || true)
 fi
 
 if [ -z "$COMPOSE_FILE" ]; then
     if [ -n "$FRIGATE_DIR" ]; then
+        if [ -n "$skipped_files" ]; then
+            error_exit "Found compose file(s) in $FRIGATE_DIR inside container $CT_ID, but none use the blakeblackshear/frigate image:$skipped_files"
+        fi
         error_exit "Could not find compose.yml, compose.yaml, docker-compose.yml, or docker-compose.yaml in $FRIGATE_DIR inside container $CT_ID."
     fi
     error_exit "Could not find a Frigate compose file inside container $CT_ID. Searched /opt/frigate, /home/frigate, and other common paths. Re-run with --dir /path/to/install if Frigate lives somewhere else."
@@ -320,11 +335,13 @@ echo "Compose file: $COMPOSE_FILE"
 
 sed_version=$(printf '%s' "$VERSION" | sed -e 's/[\\&|]/\\&/g')
 pct exec "$CT_ID" -- sed -E -i "s|(image:[[:space:]]*[\"']?)(ghcr.io/)?blakeblackshear/frigate:[^\"'[:space:]]*|\1ghcr.io/blakeblackshear/frigate:${sed_version}|" "$COMPOSE_FILE"
-pct exec "$CT_ID" -- sed -i '/^version:/d' "$COMPOSE_FILE"
 
 if ! pct exec "$CT_ID" -- grep -F -q "blakeblackshear/frigate:${VERSION}" "$COMPOSE_FILE"; then
     error_exit "Could not update the Frigate image tag in $COMPOSE_FILE. The image line was not in a recognized format."
 fi
+
+# Only drop the obsolete top-level version: key once the image update is confirmed
+pct exec "$CT_ID" -- sed -i '/^version:/d' "$COMPOSE_FILE"
 
 compose_dir=$(dirname "$COMPOSE_FILE")
 compose_base=$(basename "$COMPOSE_FILE")
