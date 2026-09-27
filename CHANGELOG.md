@@ -1,5 +1,8 @@
 ## [Unreleased]
 
+### Fixed
+- Update script no longer requires Frigate to live in `/opt/frigate`. It detects the compose file from the running container, common paths including `/home/frigate`, and a shallow directory search. Pass `--dir` when the install is somewhere else.
+
 ## [1.4.0] - 2026-06-28
 
 ### Added

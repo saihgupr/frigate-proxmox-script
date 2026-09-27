@@ -327,6 +327,7 @@ The script supports several flags to automate the update process and ensure safe
 | `--version` | `-v` | Version tag (e.g., `0.17.0-rc2`, `latest`, `beta`) |
 | `--snapshot` | `-s` | Take a snapshot before updating. Optionally provide a name. |
 | `--prune` | `-p` | Prune unused Docker images and layers before updating. |
+| `--dir` | | Install directory inside the container if auto-detect fails (e.g. `/home/frigate`) |
 
 ### Examples
 
@@ -358,13 +359,15 @@ bash <(wget -qO- https://raw.githubusercontent.com/saihgupr/frigate-proxmox-scri
 
 > [!TIP]
 > Use `-i` for Container ID, `-v` for Version, and `-s` for Snapshot. If no flags are provided, the script will guide you through the settings and ask if you'd like a snapshot before starting.
+>
+> The updater does not assume `/opt/frigate`. It checks the running container's Docker Compose project, then `/opt/frigate`, `/home/frigate`, and other common paths. If your install is elsewhere, pass `--dir /path/to/install`.
 
 </details>
 
 <details>
 <summary>Option 2: The Manual Way</summary>
 
-1. Edit your compose file. Replace `<CT_ID>` with your container ID (e.g., 100).
+1. Edit your compose file. Replace `<CT_ID>` with your container ID (e.g., 100). New installs use `/opt/frigate`; if yours is elsewhere (for example `/home/frigate`), use that path instead.
    ```bash
    pct exec <CT_ID> -- nano /opt/frigate/compose.yml
    ```
