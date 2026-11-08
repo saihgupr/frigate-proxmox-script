@@ -1681,6 +1681,9 @@ $volumes_list
       - "$FRIGATE_PORT:$FRIGATE_PORT"
       - "$GO2RTC_PORT:$GO2RTC_PORT"
       - "$AUTH_PORT:$AUTH_PORT"
+      - "8554:8554"
+      - "8555:8555/tcp"
+      - "8555:8555/udp"
 $device_config
     environment:
       - FRIGATE_RTSP_PASSWORD=$FRIGATE_RTSP_PASSWORD
@@ -2068,8 +2071,11 @@ enable: 1
 IN ACCEPT -p tcp --dport $FRIGATE_PORT -log nolog # Frigate web UI
 IN ACCEPT -p tcp --dport $GO2RTC_PORT -log nolog # go2rtc API
 IN ACCEPT -p tcp --dport $AUTH_PORT -log nolog # Frigate Auth
+IN ACCEPT -p tcp --dport 8554 -log nolog # go2rtc RTSP
+IN ACCEPT -p tcp --dport 8555 -log nolog # go2rtc WebRTC/TCP
+IN ACCEPT -p udp --dport 8555 -log nolog # go2rtc WebRTC/UDP
 EOF
-        log_success "Firewall enabled: ports $FRIGATE_PORT, $GO2RTC_PORT, $AUTH_PORT (TCP) open"
+        log_success "Firewall enabled: ports $FRIGATE_PORT, $GO2RTC_PORT, $AUTH_PORT, 8554, 8555 (TCP/UDP) open"
     else
         log_dry_run "Create $fw_file and enable firewall on container"
     fi

@@ -1,5 +1,8 @@
 ## [Unreleased]
 
+### Fixed
+- Expose go2rtc's RTSP (8554) and WebRTC (8555 TCP/UDP) ports in the generated compose file and firewall rules, so Home Assistant can stream camera feeds (#55).
+
 ## [1.4.1] - 2026-11-08
 
 ### Added
