@@ -1,4 +1,11 @@
-## [Unreleased]
+## [1.4.2] - 2026-11-08
+
+### Changed
+- The default container rootfs is now 16GB. The current Frigate stable image is about 8.7GB, so a 10GB rootfs fails during extraction even without a YOLO export (#58).
+- The installer now prunes Docker build cache and package cache after installation, and the updater prunes build cache and dangling images, keeping the actual disk footprint close to the image size.
+
+### Fixed
+- Expose go2rtc's RTSP (8554) and WebRTC (8555 TCP/UDP) ports in the generated compose file and firewall rules, so Home Assistant can stream camera feeds (#55).
 
 ## [1.4.1] - 2026-11-08
 
