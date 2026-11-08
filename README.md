@@ -91,7 +91,7 @@ The script will prompt you for:
 - **SSH** - Enable SSH access (uses Root Password automatically with `root` user)
 - **CPU Cores** - Default: 4
 - **RAM** - Default: 2048 MB (2GB recommended for Docker)
-- **Disk Size** - Default: 10 GB (for recordings)
+- **Disk Size** - Default: 16 GB (container rootfs; recordings can use a separate disk)
 - **Network** - DHCP or static IP
 - **Intel iGPU** - Enable hardware acceleration (recommended)
 - **Samba** - Enable file sharing for easy access to config and recordings

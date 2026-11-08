@@ -249,6 +249,7 @@ check_container_space() {
         if [[ "$prune_choice" =~ ^[Yy]$ ]]; then
             echo "Pruning Docker system..."
             pct exec "$CT_ID" -- docker system prune -a -f
+            pct exec "$CT_ID" -- docker builder prune -a -f || true
             # Re-check space
             avail_kb=$(pct exec "$CT_ID" -- df / --output=avail | tail -1 | xargs)
             avail_gb=$((avail_kb / 1024 / 1024))
@@ -262,6 +263,7 @@ check_container_space() {
 if [ "$DO_PRUNE" = true ]; then
     echo "Pruning Docker system in container $CT_ID..."
     pct exec "$CT_ID" -- docker system prune -a -f
+    pct exec "$CT_ID" -- docker builder prune -a -f || true
     [ "$VERSION" = "" ] && exit 0 # Exit if only pruning was requested
 fi
 
@@ -351,6 +353,10 @@ pct exec "$CT_ID" -- bash -c 'cd "$1" && docker compose -f "$2" pull' bash "$com
 
 echo "Recreating container..."
 pct exec "$CT_ID" -- bash -c 'cd "$1" && docker compose -f "$2" up -d' bash "$compose_dir" "$compose_base"
+
+echo "Cleaning up unused images and build cache..."
+pct exec "$CT_ID" -- docker image prune -f || true
+pct exec "$CT_ID" -- docker builder prune -a -f || true
 
 
 echo -e "${GREEN}Update complete!${NC}"

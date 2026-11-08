@@ -38,7 +38,7 @@ CT_HOSTNAME="frigate"
 CT_PRIVILEGED=0  # Security default: use unprivileged LXC
 CT_CORES=4
 CT_RAM=2048
-CT_DISK=10
+CT_DISK=16
 CT_STORAGE=""
 CT_VLAN=""
 CT_MTU=""
@@ -341,8 +341,8 @@ check_resources() {
     local avail_gb=$((avail / 1024 / 1024))
     local pct_int=${pct%%.*}
 
-    if [ "$avail_gb" -lt 10 ]; then
-        log_warn "Low space on pool '$CT_STORAGE': Only ${avail_gb}GB available. Recommended: 10GB+ for rootfs."
+    if [ "$avail_gb" -lt 16 ]; then
+        log_warn "Low space on pool '$CT_STORAGE': Only ${avail_gb}GB available. Recommended: 16GB+ for rootfs."
     elif [ "$pct_int" -gt 90 ]; then
         log_warn "Storage pool '$CT_STORAGE' is ${pct}% full. This may cause issues during operation."
     else
@@ -521,8 +521,11 @@ configure_container() {
     log "Selected template storage: $TEMPLATE_STORAGE"
 
     echo ""
-    read -p "Enter disk size in GB (default: 10): " input_disk
-    CT_DISK="${input_disk:-10}"
+    read -p "Enter disk size in GB (default: 16, minimum for the current Frigate image): " input_disk
+    CT_DISK="${input_disk:-16}"
+    if [[ "$CT_DISK" =~ ^[0-9]+$ ]] && [ "$CT_DISK" -lt 16 ]; then
+        log_warn "A ${CT_DISK}GB rootfs is below the current Frigate image footprint (~10GB) and usually fails during extraction. 16GB is recommended."
+    fi
     
     # Optional Separate Recordings Disk
     echo ""
@@ -1915,6 +1918,18 @@ start_frigate() {
     log_success "Frigate started"
 }
 
+cleanup_docker_space() {
+    log_step "Cleaning up Docker build cache and package cache..."
+    if [ "$DRY_RUN" = false ]; then
+        pct exec "$CT_ID" -- bash -c 'docker builder prune -a -f >/dev/null 2>&1 || true' || true
+        pct exec "$CT_ID" -- bash -c 'docker image prune -f >/dev/null 2>&1 || true' || true
+        pct exec "$CT_ID" -- bash -c 'apt-get clean' >/dev/null 2>&1 || true
+        log_success "Build cache and package cache cleaned"
+    else
+        log_dry_run "Prune Docker build cache and package cache"
+    fi
+}
+
 # ============================================================================
 # OPTIONAL FEATURES
 # ============================================================================
@@ -2272,6 +2287,7 @@ main() {
     setup_samba
     setup_firewall
     create_container_summary_dashboard
+    cleanup_docker_space
     
     create_snapshot
 
