@@ -1,6 +1,7 @@
 ## [Unreleased]
 
 ### Fixed
+- Root, SSH and Samba passwords containing quotes, spaces or `$` no longer break the install. The root password is passed to `pct create` as a single argument, the SSH and Samba ones go through stdin instead of a shell command, and dry runs no longer write them to the log.
 - Update script no longer requires Frigate to live in `/opt/frigate`. It detects the compose file from the running container, common paths including `/home/frigate`, and a shallow directory search. Pass `--dir` when the install is somewhere else.
 
 ## [1.4.0] - 2026-06-28

@@ -238,6 +238,17 @@ execute_in_container() {
     fi
 }
 
+# Passwords go through stdin, never inside a command string: a quote in the
+# password would break the command, and dry runs would write it to the log.
+set_container_password() {
+    local user="$1" password="$2"
+    if [ "$DRY_RUN" = true ]; then
+        log_dry_run "set the password of $user in container $CT_ID"
+    else
+        printf '%s:%s\n' "$user" "$password" | pct exec "$CT_ID" -- chpasswd 2>&1 | tee -a "$LOG_FILE"
+    fi
+}
+
 error_exit() {
     log_error "$1"
     log_error "Installation failed! Check log file: $LOG_FILE"
@@ -1059,9 +1070,9 @@ create_lxc_container() {
         net_config="$net_config,firewall=1"
     fi
 
-    local password_part=""
+    local password_args=()
     if [ -n "$ROOT_PASSWORD" ]; then
-        password_part="--password $ROOT_PASSWORD"
+        password_args=(--password "$ROOT_PASSWORD")
     fi
     
     if [ "$DRY_RUN" = false ]; then
@@ -1076,7 +1087,7 @@ create_lxc_container() {
             --ostype debian \
             --unprivileged $((1 - CT_PRIVILEGED)) \
             --features nesting=1,keyctl=1 \
-            $password_part 2>&1 | tee -a "$LOG_FILE" || error_exit "Failed to create container"
+            "${password_args[@]}" 2>&1 | tee -a "$LOG_FILE" || error_exit "Failed to create container"
         
         log_success "Container created"
     else
@@ -1703,7 +1714,7 @@ setup_ssh() {
     # Create user (unless it's root)
     if [ "$SSH_USER" != "root" ]; then
         execute_in_container "useradd -m -s /bin/bash $SSH_USER"
-        execute_in_container "echo '$SSH_USER:$SSH_PASSWORD' | chpasswd"
+        set_container_password "$SSH_USER" "$SSH_PASSWORD"
         execute_in_container "usermod -aG sudo $SSH_USER"
         
         # Configure passwordless sudo
@@ -1712,7 +1723,7 @@ setup_ssh() {
         execute_in_container "chmod 0440 /etc/sudoers.d/$SSH_USER"
     else
         # Just set root password
-        execute_in_container "echo 'root:$SSH_PASSWORD' | chpasswd"
+        set_container_password root "$SSH_PASSWORD"
         # Enable root login in sshd_config
         execute_in_container "sed -i 's/^#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config"
         execute_in_container "sed -i 's/^PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config"  
@@ -1784,7 +1795,7 @@ setup_samba() {
     execute_in_container "find /opt/frigate/config /opt/frigate/storage -name 'lost+found' -prune -o -exec chmod 750 {} +"
 
     if [ "$DRY_RUN" = false ]; then
-        pct exec "$CT_ID" -- bash -c "printf '%s\n%s\n' '$SAMBA_PASSWORD' '$SAMBA_PASSWORD' | smbpasswd -a -s frigate"
+        printf '%s\n%s\n' "$SAMBA_PASSWORD" "$SAMBA_PASSWORD" | pct exec "$CT_ID" -- smbpasswd -a -s frigate
 
         pct exec "$CT_ID" -- bash -c "cat > /etc/samba/smb.conf" << 'EOF'
 [global]
