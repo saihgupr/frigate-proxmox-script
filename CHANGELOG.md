@@ -1,8 +1,17 @@
 ## [Unreleased]
 
+## [1.4.1] - 2026-11-08
+
+### Added
+- Added automatic detection and interactive auto-recovery for the containerd CVE-2025-52881 AppArmor conflict (`reopen fd 8: permission denied`) during container startup.
+- Added first-class support for configuring custom SSL/TLS certificates during installation, supporting both Proxmox host-mounted directory paths (automatic LXC bind-mount mapping) and container-managed paths.
+- Added configurable LXC `tmpfs` mounts for `/dev/shm` and `/tmp/cache`, using the configured SHM size (#52).
+- YOLO model exports now raise the container rootfs to 16GB, and installs with container-managed certificates skip the first container start until the certificate files are uploaded, avoiding a crash loop (#53).
+
 ### Fixed
 - Root, SSH and Samba passwords containing quotes, spaces or `$` no longer break the install. The root password is passed to `pct create` as a single argument, the SSH and Samba ones go through stdin instead of a shell command, and dry runs no longer write them to the log.
 - Update script no longer requires Frigate to live in `/opt/frigate`. It detects the compose file from the running container, common paths including `/home/frigate`, and a shallow directory search. Pass `--dir` when the install is somewhere else.
+- Improved container network initialization check by verifying actual DNS resolution rather than just checking for a local interface IP.
 
 ## [1.4.0] - 2026-06-28
 
