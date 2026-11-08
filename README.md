@@ -76,7 +76,7 @@ These options allow for automated or specialized network configurations:
 | `-b`, `--bridge NAME` | Specify the network bridge (default: `vmbr0`) |
 | `--vlan TAG`          | Specify a VLAN tag for the container network (1-4094) |
 | `--mtu MTU`           | Specify an MTU for the container network (576-9000) |
-| `--firewall`          | Enable Proxmox firewall on the container (opens ports 5000, 1984, and 8971) |
+| `--firewall`          | Enable Proxmox firewall on the container (opens ports 5000, 1984, 8971, and 8554/8555 for RTSP and WebRTC) |
 | `--ssl-host PATH`     | Configure custom SSL by mounting certificates from PATH on the host |
 | `--ssl-container PATH`| Configure custom SSL by pointing to PATH inside the LXC container |
 
@@ -128,13 +128,16 @@ If you chose to manage certificates inside the container:
 <details>
 <summary><h3>Updating Existing Installations</h3></summary>
 
-If you have an existing installation from an older version of the script and need the **go2rtc API (1984)** or **Frigate Auth (8971)** ports, you will need to add them manually to your `compose.yml` (new installations automatically map these ports):
+If you have an existing installation from an older version of the script and need the **go2rtc API (1984)**, **Frigate Auth (8971)**, or the **RTSP (8554) and WebRTC (8555)** ports used by Home Assistant streaming, you will need to add them manually to your `compose.yml` (new installations automatically map these ports):
 
 1.  Edit the file: `pct exec <CT_ID> -- nano /opt/frigate/compose.yml`
 2.  Add the ports under the `ports:` section:
     ```yaml
           - "1984:1984"  # go2rtc API
           - "8971:8971"  # Frigate Auth port (Requires HTTPS)
+          - "8554:8554"  # go2rtc RTSP
+          - "8555:8555/tcp"  # go2rtc WebRTC over TCP
+          - "8555:8555/udp"  # go2rtc WebRTC over UDP
     ```
 3.  Recreate the container:
     ```bash
