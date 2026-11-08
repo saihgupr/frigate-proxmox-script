@@ -1,4 +1,4 @@
-## [Unreleased]
+## [1.4.2] - 2026-11-08
 
 ### Changed
 - The default container rootfs is now 16GB. The current Frigate stable image is about 8.7GB, so a 10GB rootfs fails during extraction even without a YOLO export (#58).
