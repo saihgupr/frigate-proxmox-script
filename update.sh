@@ -44,7 +44,7 @@ COMPOSE_FILE=""
 DO_SNAPSHOT=false
 SNAPSHOT_NAME=""
 DO_PRUNE=false
-AUTO_PRUNE_LIMIT=5 # GB
+AUTO_PRUNE_LIMIT=12 # GB; must exceed a Frigate image (~8.7GB) or the pull can still fail
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -244,7 +244,7 @@ check_container_space() {
     if [ "$avail_gb" -lt "$AUTO_PRUNE_LIMIT" ]; then
         echo -e "${YELLOW}Warning: Only ${avail_gb}GB available on container root disk.${NC}"
         echo -n "Would you like to prune unused Docker images and layers to free up space? (Y/n): "
-        read -r prune_choice
+        read -r prune_choice || prune_choice=""
         prune_choice=${prune_choice:-Y}
         if [[ "$prune_choice" =~ ^[Yy]$ ]]; then
             echo "Pruning Docker system..."
@@ -354,9 +354,19 @@ pct exec "$CT_ID" -- bash -c 'cd "$1" && docker compose -f "$2" pull' bash "$com
 echo "Recreating container..."
 pct exec "$CT_ID" -- bash -c 'cd "$1" && docker compose -f "$2" up -d' bash "$compose_dir" "$compose_base"
 
-echo "Cleaning up unused images and build cache..."
-pct exec "$CT_ID" -- docker image prune -f || true
-pct exec "$CT_ID" -- docker builder prune -a -f || true
+# Prune after the update, otherwise the previous image sits on disk until the
+# next run. --filter until=168h keeps images pulled in the last 7 days, so the
+# previous Frigate version is still there if the new one misbehaves.
+echo -n "Prune the previous Frigate image now? Keeps images from the last 7 days. (Y/n): "
+read -r post_prune_choice || post_prune_choice=""
+post_prune_choice=${post_prune_choice:-Y}
+if [[ "$post_prune_choice" =~ ^[Yy]$ ]]; then
+    echo "Cleaning up unused images and build cache..."
+    pct exec "$CT_ID" -- docker image prune -a -f --filter "until=168h" || true
+    pct exec "$CT_ID" -- docker builder prune -a -f || true
+else
+    echo "Skipping prune. The previous image is still on disk."
+fi
 
 
 echo -e "${GREEN}Update complete!${NC}"

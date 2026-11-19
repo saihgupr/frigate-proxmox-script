@@ -1550,9 +1550,14 @@ install_docker() {
     
     execute_in_container "apt-get update"
     execute_in_container "DEBIAN_FRONTEND=noninteractive apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin"
-    
+
+    # Cap container log growth: Frigate is chatty and Docker's default json-file
+    # driver has no size limit, so logs can quietly eat the root disk.
+    execute_in_container 'mkdir -p /etc/docker && printf "%s\n" "{\"log-driver\":\"json-file\",\"log-opts\":{\"max-size\":\"10m\",\"max-file\":\"3\"}}" > /etc/docker/daemon.json'
+
     execute_in_container "systemctl enable docker"
     execute_in_container "systemctl start docker"
+    execute_in_container "systemctl restart docker"
     
     log_success "Docker installed"
 }
