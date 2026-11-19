@@ -457,6 +457,8 @@ This project is a personal automation script designed primarily for **Intel iGPU
 - **Experimental Support**: NVIDIA and AMD GPU configurations. These are included as a convenience but often require host-level driver troubleshooting that falls outside the scope of this project.
 - **Out of Scope**: Individual network troubleshooting, remote storage (NFS) mounting issues, or complex Docker network configurations.
 
+The Intel iGPU path is tested by the maintainer. AMD ROCm and NVIDIA passthrough are community-tested only, because that hardware is not available here. If you run either, reports are genuinely useful: [#65](https://github.com/saihgupr/frigate-proxmox-script/issues/65) for AMD ROCm and [#66](https://github.com/saihgupr/frigate-proxmox-script/issues/66) for NVIDIA.
+
 If you are using non-Intel hardware, please ensure your host-side drivers are fully functional before reporting an issue.
 
 ## Support & Feedback
