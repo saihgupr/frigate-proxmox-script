@@ -375,6 +375,8 @@ The script supports several flags to automate the update process and ensure safe
 | `--prune` | `-p` | Prune unused Docker images and layers before updating. |
 | `--dir` | | Install directory inside the container if auto-detect fails (e.g. `/home/frigate`) |
 
+After a successful update the script offers to prune the previous Frigate image, with `Y` as the default. Images pulled in the last 7 days are kept, so the previous version stays available for a rollback.
+
 ### Examples
 
 **Interactive Update**

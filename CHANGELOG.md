@@ -1,11 +1,15 @@
+## [1.4.3] - 2026-11-19
+
+### Changed
+- The updater now offers to prune the previous Frigate image right after a successful update, with Y as the default. Images pulled in the last 7 days are kept, so the previous version is still available for a rollback.
+- The updater's free-space check now requires 12GB instead of 5GB. A Frigate image is about 8.7GB, so 5GB could pass the check and still fail the pull.
+- The installer caps Docker container logs at 10MB x 3 files, so a chatty container cannot fill the root disk over time.
+
 ## [1.4.2] - 2026-11-08
 
 ### Changed
 - The default container rootfs is now 16GB. The current Frigate stable image is about 8.7GB, so a 10GB rootfs fails during extraction even without a YOLO export (#58).
 - The installer now prunes Docker build cache and package cache after installation, and the updater prunes build cache and dangling images, keeping the actual disk footprint close to the image size.
-- The updater now offers to prune the previous Frigate image right after a successful update, with Y as the default. Images pulled in the last 7 days are kept, so the previous version is still available for a rollback.
-- The updater's free-space check now requires 12GB instead of 5GB. A Frigate image is about 8.7GB, so 5GB could pass the check and still fail the pull.
-- The installer caps Docker container logs at 10MB x 3 files, so a chatty container cannot fill the root disk over time.
 
 ### Fixed
 - Expose go2rtc's RTSP (8554) and WebRTC (8555 TCP/UDP) ports in the generated compose file and firewall rules, so Home Assistant can stream camera feeds (#55).
