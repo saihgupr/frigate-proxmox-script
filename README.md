@@ -20,6 +20,7 @@ This script builds a production-ready Frigate stack from scratch: provisioning t
 ✅ **Docker-Based** - Official Frigate images for reliability and speed  
 ✅ **Intel iGPU (Primary)** - First-class support for Intel-based hardware acceleration  
 ✅ **NVIDIA & AMD (Best-Effort)** - Experimental support for non-Intel hardware  
+✅ **AMD ROCm (Optional)** - Uses the `-rocm` Frigate image with `/dev/kfd` passthrough when selected  
 ✅ **Hardware Auto-Detection** - Automatically identifies CPU, GPU, and Coral TPU  
 ✅ **Easy Updates** - Simple Docker pulls to keep your NVR current  
 ✅ **Home Assistant Ready** - Default ports and paths pre-configured  
@@ -208,10 +209,11 @@ The script performs a "pre-flight" scan of your Proxmox host to determine the be
 1.  **CPU Identification**: Detects your processor model to optimize OpenVINO performance.
 2.  **GPU Passthrough**: 
     - **Intel/AMD**: Automatically detects `/dev/dri/` and configures VAAPI.
-    - **NVIDIA**: Detects the presence of NVIDIA drivers and configures the NVIDIA Container Runtime in LXC.
+    - **AMD ROCm**: Optional prompt. Switches to the `-rocm` image, maps `/dev/kfd`, and sets `HSA_OVERRIDE_GFX_VERSION` if you provide one.
+    - **NVIDIA**: Detects the presence of NVIDIA drivers and configures the NVIDIA Container Runtime in LXC, including `/dev/nvidia-caps` when the driver exposes it.
 3.  **Detector Optimization**:
     - If a **Google Coral (USB or PCIe)** is found, it's set as the primary detector.
-    - If no Coral is found, it utilizes **OpenVINO** (favoring the iGPU if available, otherwise falling back to CPU).
+    - If no Coral is found, it utilizes **OpenVINO** (favoring the iGPU if available, otherwise falling back to CPU). AMD and generic VAAPI setups run OpenVINO on CPU.
 
 ### Intel Alder Lake-N (N95/N100/N150)
 

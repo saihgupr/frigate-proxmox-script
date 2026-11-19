@@ -1,3 +1,13 @@
+## [1.5.0] - 2026-11-19
+
+### Added
+- AMD ROCm support. When an AMD GPU is detected, the installer offers ROCm, switches to the `-rocm` Frigate image, maps `/dev/kfd`, and lets you set `HSA_OVERRIDE_GFX_VERSION` for GPUs that need it (#41).
+- NVIDIA passthrough now discovers `/dev/nvidia-caps` devices at install time and writes cgroup rules using each device's real major number, so NVENC and newer driver layouts work.
+- OpenVINO inference now defaults to CPU on AMD and generic VAAPI setups instead of the incompatible GPU.
+
+### Changed
+- NVIDIA passthrough configuration is idempotent. Re-running the installer no longer appends duplicate device or cgroup lines.
+
 ## [1.4.3] - 2026-11-19
 
 ### Changed

@@ -30,15 +30,21 @@ check() {
     fi
 }
 
-# Load the functions of install.sh without running it
-source <(sed 's/^main "\$@"$//' "$ROOT/install.sh") > /dev/null
-set +e
+# Load the functions of install.sh without running it. Written to a temp file
+# first because bash 3.2 on macOS cannot source from process substitution.
+INST_UNDER_TEST="$WORK/install-under-test.sh"
+sed 's/^main "\$@"$//' "$ROOT/install.sh" > "$INST_UNDER_TEST"
+source "$INST_UNDER_TEST" > /dev/null
+# install.sh enables strict mode when sourced; the tests call its functions with
+# partially populated globals, so relax errexit and nounset here.
+set +eu
 
 # Fake pct: each call appends its arguments (one per line) to calls/N.args,
 # and its stdin to calls/N.stdin for the commands that read one
 pct() {
     local n
-    n=$(find "$WORK/calls" -name '*.args' 2>/dev/null | wc -l)
+    # BSD wc pads its output with spaces, so strip them before using it in a path
+    n=$(find "$WORK/calls" -name '*.args' 2>/dev/null | wc -l | tr -d ' ')
     mkdir -p "$WORK/calls"
     printf '%s\n' "$@" > "$WORK/calls/$n.args"
     case " $* " in

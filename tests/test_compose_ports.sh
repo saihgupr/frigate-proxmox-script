@@ -27,9 +27,14 @@ check() {
     fi
 }
 
-# Load the functions of install.sh without running it
-source <(sed 's/^main "\$@"$//' "$ROOT/install.sh") > /dev/null
-set +e
+# Load the functions of install.sh without running it. Written to a temp file
+# first because bash 3.2 on macOS cannot source from process substitution.
+INST_UNDER_TEST="$WORK/install-under-test.sh"
+sed 's/^main "\$@"$//' "$ROOT/install.sh" > "$INST_UNDER_TEST"
+source "$INST_UNDER_TEST" > /dev/null
+# install.sh enables strict mode when sourced; the tests call its functions with
+# partially populated globals, so relax errexit and nounset here.
+set +eu
 
 # Fake pct: capture the compose file it is asked to write
 pct() {
